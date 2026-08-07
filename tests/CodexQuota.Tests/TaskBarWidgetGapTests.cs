@@ -1,0 +1,345 @@
+using System.Collections.Generic;
+using CodexQuota.Interop;
+using CodexQuota.Taskbar;
+
+namespace CodexQuota.Tests;
+
+public class TaskBarWidgetGapTests
+{
+    private static RECT R(int left, int right) => new() { left = left, top = 0, right = right, bottom = 40 };
+
+    [Fact]
+    public void ShouldReposition_BeforeFirstPlacement_IsTrueWithoutOverflowing()
+    {
+        // offsetX == 0 used to make `Math.Abs(int.MinValue - 0)` throw OverflowException,
+        // which the caller swallowed and left the widget unplaced forever.
+        Assert.True(TaskBarWidget.ShouldReposition(int.MinValue, 0, 2));
+        Assert.True(TaskBarWidget.ShouldReposition(int.MinValue, 1200, 2));
+        Assert.True(TaskBarWidget.ShouldReposition(int.MinValue, -1200, 2));
+    }
+
+    [Fact]
+    public void ShouldReposition_WithinDeadband_IsFalse()
+    {
+        Assert.False(TaskBarWidget.ShouldReposition(1200, 1200, 2));
+        Assert.False(TaskBarWidget.ShouldReposition(1200, 1201, 2));
+    }
+
+    [Fact]
+    public void ShouldReposition_AtOrBeyondDeadband_IsTrue()
+    {
+        Assert.True(TaskBarWidget.ShouldReposition(1200, 1202, 2));
+        Assert.True(TaskBarWidget.ShouldReposition(1200, 1198, 2));
+    }
+
+    [Fact]
+    public void ComputeFreeGaps_NoObstacles_ReturnsWholeSpan()
+    {
+        var gaps = TaskBarWidget.ComputeFreeGaps(0, 1000, new List<RECT>());
+
+        Assert.Single(gaps);
+        Assert.Equal((0, 1000), gaps[0]);
+    }
+
+    [Fact]
+    public void ComputeFreeGaps_ObstacleInMiddle_SplitsIntoTwoGaps()
+    {
+        var gaps = TaskBarWidget.ComputeFreeGaps(0, 1000, new List<RECT> { R(400, 600) });
+
+        Assert.Equal(2, gaps.Count);
+        Assert.Equal((0, 400), gaps[0]);
+        Assert.Equal((600, 1000), gaps[1]);
+    }
+
+    [Fact]
+    public void ComputeFreeGaps_OverlappingObstacles_AreMerged()
+    {
+        var gaps = TaskBarWidget.ComputeFreeGaps(0, 1000, new List<RECT> { R(400, 600), R(550, 700) });
+
+        Assert.Equal(2, gaps.Count);
+        Assert.Equal((0, 400), gaps[0]);
+        Assert.Equal((700, 1000), gaps[1]);
+    }
+
+    [Fact]
+    public void ComputeFreeGaps_ObstaclesClippedToBounds()
+    {
+        // Weather pill at the far left and tray at the far right, partly outside [100, 900].
+        var gaps = TaskBarWidget.ComputeFreeGaps(100, 900, new List<RECT> { R(-50, 160), R(850, 1200) });
+
+        Assert.Single(gaps);
+        Assert.Equal((160, 850), gaps[0]);
+    }
+
+    [Fact]
+    public void ComputeFreeGaps_EmptyWhenBoundsInverted()
+    {
+        Assert.Empty(TaskBarWidget.ComputeFreeGaps(500, 400, new List<RECT>()));
+    }
+
+    [Fact]
+    public void PlaceInFittingGap_PreferredInsideFittingGap_KeepsPreferred()
+    {
+        var gaps = new List<(int, int)> { (0, 400), (600, 1000) };
+
+        Assert.Equal(650, TaskBarWidget.PlaceInFittingGap(650, gaps, 172));
+    }
+
+    [Fact]
+    public void PlaceInFittingGap_PreferredOnObstacle_SnapsToNearestFittingGap()
+    {
+        // Preferred 500 falls in the blocked band; the right gap [600,1000] is nearest and fits.
+        var gaps = new List<(int, int)> { (0, 400), (600, 1000) };
+
+        Assert.Equal(600, TaskBarWidget.PlaceInFittingGap(500, gaps, 172));
+    }
+
+    [Fact]
+    public void PlaceInFittingGap_PreferredPastGapEnd_ClampsInsideGap()
+    {
+        var gaps = new List<(int, int)> { (600, 1000) };
+
+        // width 172 -> max start is 1000-172 = 828.
+        Assert.Equal(828, TaskBarWidget.PlaceInFittingGap(950, gaps, 172));
+    }
+
+    [Fact]
+    public void PlaceInFittingGap_NoGapWideEnough_ReturnsNull()
+    {
+        var gaps = new List<(int, int)> { (0, 100), (600, 700) };
+
+        Assert.Null(TaskBarWidget.PlaceInFittingGap(50, gaps, 172));
+    }
+
+    // The drag itself is unconstrained (issue #21): it only clamps to the span, so it can never stall or
+    // skip a zone. Snapping to a free gap happens once, on release.
+    [Fact]
+    public void ClampToSpan_InsideSpan_KeepsRequestedPosition()
+    {
+        Assert.Equal(500, TaskBarWidget.ClampToSpan(500, 0, 1000, 172));
+    }
+
+    [Fact]
+    public void ClampToSpan_PastRightEdge_StopsAtSpanEnd()
+    {
+        Assert.Equal(828, TaskBarWidget.ClampToSpan(9999, 0, 1000, 172));
+    }
+
+    [Fact]
+    public void ClampToSpan_BeforeLeftEdge_StopsAtSpanStart()
+    {
+        Assert.Equal(100, TaskBarWidget.ClampToSpan(-50, 100, 1000, 172));
+    }
+
+    [Fact]
+    public void ClampToSpan_SpanNarrowerThanWidget_PinsToStartInsteadOfRefusing()
+    {
+        Assert.Equal(100, TaskBarWidget.ClampToSpan(400, 100, 200, 172));
+    }
+
+    // Centred taskbar: icon cluster at [400,600] leaves a left zone and a right zone.
+    private static readonly List<(int start, int end)> CentredLayout = new() { (0, 400), (600, 1000) };
+
+    [Fact]
+    public void SelectDragGap_CursorInAZone_TracksThatZone()
+    {
+        var gap = TaskBarWidget.SelectDragGap(CentredLayout, cursorX: 200, desiredX: 150, width: 172, current: null);
+
+        Assert.Equal((0, 400), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_CursorCrossesTheIconCluster_KeepsTheZoneItStartedIn()
+    {
+        // Cursor is over the icons at x=500 — no zone contains it. The widget must wait in the left zone,
+        // not teleport to the right one (the random lane-jumping in issue #21).
+        var gap = TaskBarWidget.SelectDragGap(CentredLayout, cursorX: 500, desiredX: 450, width: 172, current: (0, 400));
+
+        Assert.Equal((0, 400), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_CursorReachesTheFarSide_HandsOverToThatZone()
+    {
+        var gap = TaskBarWidget.SelectDragGap(CentredLayout, cursorX: 700, desiredX: 650, width: 172, current: (0, 400));
+
+        Assert.Equal((600, 1000), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_CursorPassesLaneMidpoint_HandsOverWithoutWaitingForFarLane()
+    {
+        var gap = TaskBarWidget.SelectDragGap(CentredLayout, cursorX: 501, desiredX: 451, width: 172,
+            current: (0, 400));
+
+        Assert.Equal((600, 1000), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_CursorMovesBackPastLaneMidpoint_ReturnsToPreviousLane()
+    {
+        var gap = TaskBarWidget.SelectDragGap(CentredLayout, cursorX: 499, desiredX: 549, width: 172,
+            current: (600, 1000));
+
+        Assert.Equal((0, 400), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_StickyZoneSurvivesObstacleRectsShiftingByAPixel()
+    {
+        var relaidOut = new List<(int start, int end)> { (0, 398), (602, 1000) };
+
+        var gap = TaskBarWidget.SelectDragGap(relaidOut, cursorX: 500, desiredX: 450, width: 172, current: (0, 400));
+
+        Assert.Equal((0, 398), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_IgnoresZonesTooNarrowForTheWidget()
+    {
+        var gaps = new List<(int, int)> { (0, 100), (600, 1000) };
+
+        // Cursor sits inside the narrow zone, which cannot hold the widget: fall through to the one that can.
+        var gap = TaskBarWidget.SelectDragGap(gaps, cursorX: 50, desiredX: 20, width: 172, current: null);
+
+        Assert.Equal((600, 1000), gap);
+    }
+
+    [Fact]
+    public void SelectDragGap_NoZoneFits_ReturnsNull()
+    {
+        var gaps = new List<(int, int)> { (0, 100), (600, 700) };
+
+        Assert.Null(TaskBarWidget.SelectDragGap(gaps, cursorX: 50, desiredX: 20, width: 172, current: null));
+    }
+
+    [Fact]
+    public void FilterContainerRects_DropsRectsSpanningMoreThanHalfTheTaskbar()
+    {
+        // A UIA grouping element covering most of the bar would otherwise erase every free gap.
+        var kept = TaskBarWidget.FilterContainerRects(new List<RECT> { R(0, 900), R(400, 460) }, taskbarWidth: 1000);
+
+        Assert.Single(kept);
+        Assert.Equal(400, kept[0].left);
+    }
+
+    [Fact]
+    public void FilterContainerRects_KeepsEverythingWhenTaskbarWidthUnknown()
+    {
+        var rects = new List<RECT> { R(0, 900) };
+
+        Assert.Same(rects, TaskBarWidget.FilterContainerRects(rects, taskbarWidth: 0));
+    }
+
+    [Fact]
+    public void PlaceInFittingGap_SkipsTooSmallGap_PicksWiderOne()
+    {
+        // Nearest gap [400,500] is too small; must skip to the wide gap even though it's farther.
+        var gaps = new List<(int, int)> { (400, 500), (600, 1000) };
+
+        Assert.Equal(600, TaskBarWidget.PlaceInFittingGap(450, gaps, 172));
+    }
+
+    private static RECT Band(int left, int right, int top, int bottom)
+        => new() { left = left, top = top, right = right, bottom = bottom };
+
+    [Fact]
+    public void FilterOffBandRects_DropsFlyoutContentAboveTheBar()
+    {
+        // Taskbar band is [0,40) in client coords; the Widgets flyout sits above it and spans the left half.
+        var kept = TaskBarWidget.FilterOffBandRects(
+            new List<RECT> { Band(0, 500, -600, -40), R(400, 460) },
+            taskbarHeight: 40);
+
+        Assert.Single(kept);
+        Assert.Equal(400, kept[0].left);
+    }
+
+    [Fact]
+    public void FilterOffBandRects_KeepsBarItemsThatOverhangByAFewPixels()
+    {
+        var kept = TaskBarWidget.FilterOffBandRects(new List<RECT> { Band(100, 160, -3, 38) }, taskbarHeight: 40);
+
+        Assert.Single(kept);
+    }
+
+    [Fact]
+    public void FilterOffBandRects_KeepsEverythingWhenTaskbarHeightUnknown()
+    {
+        var rects = new List<RECT> { Band(0, 500, -600, -40) };
+
+        Assert.Same(rects, TaskBarWidget.FilterOffBandRects(rects, taskbarHeight: 0));
+    }
+
+    [Fact]
+    public void FilterOffBandRects_KeepsZeroHeightRects()
+    {
+        // Some shell elements report an empty vertical extent while still occupying the bar.
+        var kept = TaskBarWidget.FilterOffBandRects(new List<RECT> { Band(100, 160, 20, 20) }, taskbarHeight: 40);
+
+        Assert.Single(kept);
+    }
+
+    [Fact]
+    public void OffBandFlyoutRect_WouldOtherwiseEraseTheLeftDragZone()
+    {
+        // Regression for the "drags right but never left" report: a flyout rect covering [0,500) removes the
+        // whole left zone, so no gap left of the icon cluster remains for the drag to hand over to.
+        var flyout = Band(0, 500, -600, -40);
+        var iconCluster = R(560, 700);
+
+        // Unfiltered, the only free space left of the cluster is the 60px sliver the flyout doesn't cover —
+        // too narrow for the widget, so the drag has nowhere to go on the left.
+        var unfiltered = TaskBarWidget.ComputeFreeGaps(0, 1000, new List<RECT> { flyout, iconCluster });
+        Assert.Equal((500, 560), unfiltered[0]);
+        Assert.Equal(700, TaskBarWidget.PlaceInFittingGap(0, unfiltered, 172));
+
+        var filtered = TaskBarWidget.ComputeFreeGaps(
+            0, 1000, TaskBarWidget.FilterOffBandRects(new List<RECT> { flyout, iconCluster }, taskbarHeight: 40));
+        Assert.Equal(2, filtered.Count);
+        Assert.Equal((0, 560), filtered[0]);
+        Assert.Equal((700, 1000), filtered[1]);
+
+        // The point of the filter: the solver now HANDS the drag the left zone instead of pushing it back
+        // past the cluster. Asserting the gap exists is not enough — the reported symptom was the placement,
+        // and a gap the solver declines to use looks identical to no gap at all.
+        Assert.Equal(0, TaskBarWidget.PlaceInFittingGap(0, filtered, 172));
+    }
+
+    [Fact]
+    public void ComputeUsableHorizontalBounds_PrimaryTaskbar_StopsBeforeTray()
+    {
+        var taskbar = R(0, 1920);
+        var tray = R(1600, 1920);
+
+        var bounds = TaskBarWidget.ComputeUsableHorizontalBounds(taskbar, tray, clearance: 6, isRtl: false);
+
+        Assert.Equal((0, 1594), bounds);
+    }
+
+    [Fact]
+    public void ComputeUsableHorizontalBounds_SecondaryTaskbar_UsesFreeOuterEdge()
+    {
+        var taskbar = R(0, 1920);
+
+        var bounds = TaskBarWidget.ComputeUsableHorizontalBounds(taskbar, notificationRect: null, clearance: 6, isRtl: false);
+
+        Assert.Equal((0, 1914), bounds);
+        Assert.Equal(1742, TaskBarWidget.PlaceInFittingGap(
+            preferredX: bounds.right - 172,
+            TaskBarWidget.ComputeFreeGaps(bounds.left, bounds.right, new List<RECT>()),
+            width: 172));
+    }
+
+    [Fact]
+    public void ComputeUsableHorizontalBounds_RtlSecondaryTaskbar_LeavesClearanceAtLeftEdge()
+    {
+        var bounds = TaskBarWidget.ComputeUsableHorizontalBounds(
+            R(0, 1920),
+            notificationRect: null,
+            clearance: 6,
+            isRtl: true);
+
+        Assert.Equal((6, 1920), bounds);
+    }
+}

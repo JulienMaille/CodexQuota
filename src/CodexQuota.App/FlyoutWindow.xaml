@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="CodexQuota.FlyoutWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CodexQuota.Controls">
+
+    <Grid x:Name="Root" CornerRadius="8">
+        <Grid.Resources>
+            <!-- Compact checkbox: 16px box (default is 20px) so the toggle row reads small in the flyout.
+                 Same palette resources as the default control; only the geometry is reduced. -->
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="MinHeight" Value="20"/>
+                <Setter Property="Padding" Value="6,0,0,0"/>
+                <!-- ContentControl default is Top: the template's ContentPresenter binds this, so without
+                     it the label hugs the row top while the 16px box centers. -->
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <Grid Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CheckStates">
+                                        <VisualState x:Name="Checked">
+                                            <VisualState.Setters>
+                                                <Setter Target="CheckBoxOuterBorder.Background" Value="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                                <Setter Target="CheckBoxOuterBorder.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                                <Setter Target="CheckGlyph.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Unchecked">
+                                            <VisualState.Setters>
+                                                <Setter Target="CheckBoxOuterBorder.Background" Value="{ThemeResource ControlFillColorDefaultBrush}"/>
+                                                <Setter Target="CheckBoxOuterBorder.BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}"/>
+                                                <Setter Target="CheckGlyph.Foreground" Value="Transparent"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="CheckBoxOuterBorder"
+                                        Width="16"
+                                        Height="16"
+                                        BorderThickness="1"
+                                        CornerRadius="3"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                                    <FontIcon x:Name="CheckGlyph"
+                                              Glyph="&#xE73E;"
+                                              FontSize="14"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Foreground="Transparent"/>
+                                </Border>
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Grid.Column="1"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  FontFamily="{TemplateBinding FontFamily}"
+                                                  FontSize="{TemplateBinding FontSize}"
+                                                  FontWeight="{TemplateBinding FontWeight}"
+                                                  Foreground="{TemplateBinding Foreground}"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </Grid.Resources>
+        <ScrollViewer Padding="16,14,16,4"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <controls:CodexUsagePanel x:Name="UsagePanel"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Top"/>
+        </ScrollViewer>
+
+        <!-- The appearance section floats over the usage content (same grid cell, drawn on top): it
+             never contributes to the flyout height, and the window does not grow or shrink when it
+             reveals. -->
+        <StackPanel x:Name="AppearanceSection"
+                    Margin="16,6,16,12"
+                    Spacing="8"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+            <StackPanel.RenderTransform>
+                <TranslateTransform x:Name="AppearanceSectionTransform"/>
+            </StackPanel.RenderTransform>
+            <Border Height="1"
+                    Margin="0,2,0,4"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="10"
+                        HorizontalAlignment="Left">
+                <CheckBox x:Name="ShowIconCheck"
+                          Content="Icon"
+                          MinWidth="0"
+                          VerticalAlignment="Center"
+                          Checked="AppearanceCheck_Checked"
+                          Unchecked="AppearanceCheck_Unchecked"
+                          ToolTipService.ToolTip="Show the Codex badge in the taskbar tile"/>
+                <CheckBox x:Name="ShowProgressBarCheck"
+                          Content="Bars"
+                          MinWidth="0"
+                          VerticalAlignment="Center"
+                          Checked="AppearanceCheck_Checked"
+                          Unchecked="AppearanceCheck_Unchecked"
+                          ToolTipService.ToolTip="Show progress bars in the taskbar tile; percentages always stay"/>
+                <CheckBox x:Name="ColorCodeTextCheck"
+                          Content="Color %"
+                          MinWidth="0"
+                          VerticalAlignment="Center"
+                          Checked="AppearanceCheck_Checked"
+                          Unchecked="AppearanceCheck_Unchecked"
+                          ToolTipService.ToolTip="Color the remaining percent: orange at 50% or less, red at 20% or less"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0">
+                <TextBlock Text="Warn below %"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                <NumberBox x:Name="WarnUpperBox"
+                           Value="50"
+                           Minimum="1"
+                           Maximum="99"
+                           SmallChange="5"
+                           Width="64"
+                           SpinButtonPlacementMode="Compact"
+                           ValueChanged="WarnThresholdBox_ValueChanged"
+                           ToolTipService.ToolTip="Caution (orange) below this remaining percent"/>
+                <NumberBox x:Name="WarnLowerBox"
+                           Value="20"
+                           Minimum="0"
+                           Maximum="99"
+                           SmallChange="5"
+                           Width="64"
+                           SpinButtonPlacementMode="Compact"
+                           ValueChanged="WarnThresholdBox_ValueChanged"
+                           ToolTipService.ToolTip="Critical (red) below this remaining percent"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

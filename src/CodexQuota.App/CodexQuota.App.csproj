@@ -1,0 +1,141 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>CodexQuota</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Custom Program.Main enforces a single instance; see Program.cs -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+
+    <!-- Unpackaged, self-contained so it runs without prerequisites and can inject into the taskbar -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">win-x64</RuntimeIdentifier>
+    <!-- Loose .xbf beside the exe; required for unpackaged publish (embedded-only Release PRI was not copied). -->
+    <DisableEmbeddedXbf>true</DisableEmbeddedXbf>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
+
+    <Product>CodexQuota</Product>
+    <AssemblyName>CodexQuota</AssemblyName>
+    <ApplicationIcon>Assets\CodexQuota.ico</ApplicationIcon>
+    <Version>1.1.2</Version>
+    <AssemblyVersion>1.1.2.0</AssemblyVersion>
+    <FileVersion>1.1.2.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\CodexQuota.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!--
+      WinUI's resource pipeline loads Microsoft.WindowsAppRuntime.Insights.Resource.dll on the first
+      render of any control whose template lives in the AppSDK resource container (the NumberBox
+      threshold editors introduced this dependency). The self-contained AppSDK payload omits it — the
+      file only ships in the MSIX-installed runtime — so an unpackaged app hits 0x8007007E on the
+      first flyout open unless it sits next to the exe. Committed from the WinAppSDK 2.2.0 runtime
+      (redistributable as part of the Windows App Runtime), one copy per architecture.
+    -->
+    <Content Include="Libs\$(Platform)\Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+             Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Link>Microsoft.WindowsAppRuntime.Insights.Resource.dll</Link>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <!-- Granular Windows App SDK: the metapackage also drags in the AI/ML/Widgets components
+         (DirectML.dll ~20 MB, onnxruntime.dll ~22 MB + projections), which this app never uses
+         and never loads. WinUI + Runtime is the full closure the taskbar island needs. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.1.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="[2.1.3]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CodexQuota.Tests" />
+  </ItemGroup>
+
+  <!--
+    The XAML compiler emits loose .xbf files as part of the build. They are not
+    represented by project items, so collecting them during AssignTargetPaths
+    happens before the files exist in a clean dotnet publish. Copy them after
+    Publish has built the app and produced the final publish directory.
+  -->
+  <Target Name="AddLooseXbfToPublish"
+          Condition="'$(WindowsPackageType)' == 'None' and '$(PublishDir)' != ''"
+          AfterTargets="Publish">
+    <ItemGroup>
+      <_LooseXbf Include="$(TargetDir)**\*.xbf"
+                 Exclude="$(TargetDir)publish\**\*.xbf;$(PublishDir)**\*.xbf" />
+    </ItemGroup>
+
+    <Error Condition="'@(_LooseXbf)' == ''"
+           Text="No loose XBF files were generated in '$(TargetDir)'. Unpackaged WinUI publish cannot start without them." />
+    <Copy SourceFiles="@(_LooseXbf)"
+          DestinationFiles="@(_LooseXbf->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <!-- Unpackaged WinUI 3 needs the app's resources.pri next to the exe (it maps the loose .xbf);
+         without it the app crashes with STATUS_STOWED_EXCEPTION at startup. -->
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pri"
+          DestinationFiles="$(PublishDir)$(AssemblyName).pri"
+          Condition="Exists('$(TargetDir)$(AssemblyName).pri')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Strip payloads the app never loads: .NET diagnostics/dump tooling (mscordaccore, mscordbi,
+    DiaSymReader, createdump, ...) and WinUI/AppSDK components the taskbar island never exercises
+    (WebView2, loose .winmd/.pri metadata, unused WinRT projections, DwmSceneI, ...). Verified by
+    interaction smoke: boot, tile tooltip, flyout, all appearance toggles, dark/light flip. Runs
+    after AddLooseXbfToPublish so the required CodexQuota.pri and loose .xbf files are already in place.
+  -->
+  <Target Name="PruneUnusedPublishFiles" AfterTargets="Publish">
+    <ItemGroup>
+      <_PruneFiles Include="$(PublishDir)mscordaccore*.dll" />
+      <_PruneFiles Include="$(PublishDir)mscordbi.dll" />
+      <_PruneFiles Include="$(PublishDir)clrgc*.dll" />
+      <_PruneFiles Include="$(PublishDir)clretwrc.dll" />
+      <_PruneFiles Include="$(PublishDir)createdump.exe" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.DiaSymReader.Native.*.dll" />
+      <_PruneFiles Include="$(PublishDir)mscorrc.dll" />
+      <_PruneFiles Include="$(PublishDir)RestartAgent.exe" />
+      <_PruneFiles Include="$(PublishDir)$(AssemblyName).pdb" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Text.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.pri" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Controls.pri" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Phone.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Internal.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Designer.dll" />
+      <!-- Keep Microsoft.ui.xaml.resources.common.dll: the NumberBox spin template ships there. -->
+      <_PruneFiles Include="$(PublishDir)DwmSceneI.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Graphics.Display.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Graphics.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Web.WebView2.Core.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Web.WebView2.Core.Projection.dll" />
+      <_PruneFiles Include="$(PublishDir)WebView2Loader.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Windows.*.Projection.dll" Exclude="$(PublishDir)Microsoft.Windows.AppLifecycle.Projection.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Windows.*.winmd" Exclude="$(PublishDir)Microsoft.Windows.AppLifecycle.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Foundation.winmd" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Security.Authentication.OAuth.Projection.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Security.Authentication.OAuth.winmd" />
+      <_PruneFiles Include="$(PublishDir)PushNotificationsLongRunningTask.ProxyStub.dll" />
+    </ItemGroup>
+    <Message Importance="high" Text="Pruned @(_PruneFiles->Count()) unused publish files." />
+    <Delete Files="@(_PruneFiles)" />
+  </Target>
+</Project>
