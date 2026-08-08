@@ -8,6 +8,7 @@ x64/
 ARM64/
 !src/CodexQuota.App/Libs/
 !src/CodexQuota.App/Libs/x64/
+!src/CodexQuota.App/Libs/ARM64/
 *.dll
 !src/CodexQuota.App/Libs/**/*.dll
 *.exe
