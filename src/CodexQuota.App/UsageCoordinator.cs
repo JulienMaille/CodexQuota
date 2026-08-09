@@ -109,7 +109,16 @@ namespace CodexQuota
         {
             try
             {
-                return System.Diagnostics.Process.GetProcessesByName("codex").Length > 0;
+                var processes = System.Diagnostics.Process.GetProcessesByName("codex");
+                try
+                {
+                    return processes.Length > 0;
+                }
+                finally
+                {
+                    foreach (var process in processes)
+                        process.Dispose();
+                }
             }
             catch
             {

@@ -225,7 +225,8 @@ namespace CodexQuota.Usage
     /// Codex account-level profile statistics served by <c>/backend-api/wham/profiles/me</c> — the data
     /// behind the Codex/ChatGPT "Profile" dashboard (lifetime tokens, peak daily tokens, longest running
     /// turn, streaks, token-activity buckets, and most-used plugins). Server-side aggregation: values lag
-    /// real usage and omit the current day (openai/codex#25479, #26192, #31010).
+    /// real usage and may omit the current day (openai/codex#25479, #26192, #31010); the current day can
+    /// be supplemented from local Codex session journals.
     /// </summary>
     public sealed class CodexProfileSnapshot
     {
@@ -243,10 +244,73 @@ namespace CodexQuota.Usage
         public int UniqueSkillsUsed { get; init; }
         public int TotalSkillsUsed { get; init; }
         public IReadOnlyList<ProfileUsageBucket> DailyUsageBuckets { get; init; } = Array.Empty<ProfileUsageBucket>();
+        /// <summary>True when today's bucket was supplemented by local Codex session journals.</summary>
+        public bool TodayUsageIsLocal { get; init; }
         public IReadOnlyList<ProfileUsageBucket> WeeklyUsageBuckets { get; init; } = Array.Empty<ProfileUsageBucket>();
         public IReadOnlyList<ProfileTopInvocation> TopInvocations { get; init; } = Array.Empty<ProfileTopInvocation>();
         public DateTimeOffset? GeneratedAt { get; init; }
         public string? StatsAsOf { get; init; }
+
+        /// <summary>
+        /// Merges locally observed usage into today's bucket without replacing a larger server value.
+        /// The profile endpoint remains authoritative for all historical days.
+        /// </summary>
+        public CodexProfileSnapshot WithLiveToday(DateOnly today, long liveTokens)
+        {
+            if (liveTokens <= 0)
+                return this;
+
+            string todayKey = today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            var merged = new List<ProfileUsageBucket>(DailyUsageBuckets.Count + 1);
+            bool foundToday = false;
+            bool localWon = false;
+
+            foreach (var bucket in DailyUsageBuckets)
+            {
+                if (!string.Equals(bucket.StartDate, todayKey, StringComparison.Ordinal))
+                {
+                    merged.Add(bucket);
+                    continue;
+                }
+
+                foundToday = true;
+                long tokens = Math.Max(bucket.Tokens, liveTokens);
+                localWon |= liveTokens > bucket.Tokens;
+                merged.Add(new ProfileUsageBucket(todayKey, tokens));
+            }
+
+            if (!foundToday)
+            {
+                merged.Add(new ProfileUsageBucket(todayKey, liveTokens));
+                localWon = true;
+            }
+
+            if (!localWon)
+                return this;
+
+            return new CodexProfileSnapshot
+            {
+                Username = Username,
+                DisplayName = DisplayName,
+                LifetimeTokens = LifetimeTokens,
+                PeakDailyTokens = PeakDailyTokens,
+                LongestRunningTurnSec = LongestRunningTurnSec,
+                CurrentStreakDays = CurrentStreakDays,
+                LongestStreakDays = LongestStreakDays,
+                TotalThreads = TotalThreads,
+                FastModeUsagePercentage = FastModeUsagePercentage,
+                MostUsedReasoningEffort = MostUsedReasoningEffort,
+                MostUsedReasoningEffortPercentage = MostUsedReasoningEffortPercentage,
+                UniqueSkillsUsed = UniqueSkillsUsed,
+                TotalSkillsUsed = TotalSkillsUsed,
+                DailyUsageBuckets = merged,
+                TodayUsageIsLocal = true,
+                WeeklyUsageBuckets = WeeklyUsageBuckets,
+                TopInvocations = TopInvocations,
+                GeneratedAt = GeneratedAt,
+                StatsAsOf = StatsAsOf,
+            };
+        }
     }
 
     public enum ProviderErrorKind

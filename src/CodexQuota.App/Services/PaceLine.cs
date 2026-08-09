@@ -21,10 +21,12 @@ public sealed record PaceLineResult(string Label, double RemainingPercent);
 /// Math (all from data this app already fetches):
 ///   - used-percent slope: the weekly window reports {@link RateWindow.UsedPercent} used after
 ///     (now - windowStart) elapsed in a window of {@link RateWindow.WindowMinutes} minutes, so
-///     the pace is a straight line to 100%: daysToCap = (100-used)*elapsed/used.
+///     the pace is a straight line to 100%: daysToCap = (100-used)*elapsed/used. The projection
+///     only becomes a warning when actual usage is more than two percentage points ahead of the
+///     ideal elapsed-time usage; this keeps a small first sample from dominating the estimate.
 ///   - the "tok/day" number comes from the profile's daily buckets (mean of the last ≤ 7).
-///   - the state (ok / tight / burned) folds into the configured 50/20 thresholds via
-///     {@link QuotaDisplay.BrushKeyForRemaining}: remaining% = daysToCap / daysToReset.
+///   - only a materially-ahead pace that exhausts before reset folds into the configured 50/20
+///     thresholds via {@link QuotaDisplay.BrushKeyForRemaining}; all other live pace is neutral.
 ///
 /// Hide (null) when: fewer than 2 closed profile days, a ~0 token/day mean, no weekly window /
 /// reset boundary, a window that has not started, or nothing used yet.
@@ -33,6 +35,9 @@ public static class PaceLine
 {
     /// <summary>How many closed profile days (newest last) feed the daily rate.</summary>
     public const int RateWindowDays = 7;
+
+    /// <summary>Ignore small positive deviations from the ideal time-based pace.</summary>
+    public const double OnTrackDeltaPercent = 2;
 
     /// <summary>Below this mean daily burn the line reads "nothing to say" and hides.</summary>
     public const double MinimumDailyTokens = 10;
@@ -56,6 +61,8 @@ public static class PaceLine
             return null;
 
         double used = Math.Clamp(weeklyUsedPercent, 0, 100);
+        double expectedUsed = Math.Clamp(elapsedDays / spanDays * 100, 0, 100);
+        bool materiallyAhead = used - expectedUsed > OnTrackDeltaPercent;
         double burnPerDay = used / elapsedDays;
         double daysToCap = (100 - used) / burnPerDay;
 
@@ -63,7 +70,9 @@ public static class PaceLine
         double daysToReset = (resetAt - now).TotalDays;
         double remaining = burned
             ? 0
-            : Math.Min(100, daysToCap / Math.Max(1, daysToReset) * 100);
+            : materiallyAhead && daysToCap < daysToReset
+                ? Math.Min(100, daysToCap / Math.Max(1, daysToReset) * 100)
+                : 100;
 
         // The daily rate comes from the profile buckets; the label is as-if meaningful only when
         // there is a real burn behind it.
@@ -75,7 +84,7 @@ public static class PaceLine
         string label;
         if (burned)
             label = $"Pace — cap reached · resets {DayName(resetAt)}";
-        else if (daysToCap < daysToReset)
+        else if (materiallyAhead && daysToCap < daysToReset)
             label = $"Pace ~{rateLabel} tok/day → cap {DayName(now.AddDays(daysToCap))} (~{daysToCap:0.#}d)";
         else
             label = $"Pace ~{rateLabel} tok/day — resets before cap";

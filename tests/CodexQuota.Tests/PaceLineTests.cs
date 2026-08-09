@@ -93,6 +93,20 @@ public class PaceLineTests
     }
 
     [Fact]
+    public void SmallUsageImmediatelyAfterResetDoesNotProjectAFalseRunout()
+    {
+        // One percent during the first 25 minutes is within the two-point on-track band. A
+        // projection from that tiny sample would claim the quota is exhausted in ~1.7 days.
+        var reset = Now.AddDays(6).AddHours(23).AddMinutes(35);
+        var result = PaceLine.Compute(SteadyWeek(), 1, reset, WeekMinutes, Now);
+
+        Assert.NotNull(result);
+        Assert.Equal(100, result!.RemainingPercent);
+        Assert.Contains("resets before cap", result.Label);
+        Assert.DoesNotContain("cap ", result.Label);
+    }
+
+    [Fact]
     public void MissingResetBoundaryHidesTheLine()
     {
         Assert.Null(PaceLine.Compute(SteadyWeek(), 50, null, WeekMinutes, Now));

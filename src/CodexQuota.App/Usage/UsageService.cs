@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -28,6 +29,10 @@ namespace CodexQuota.Usage
 
         // Serializes snapshot writes; see QueueSnapshotSave.
         private static readonly SemaphoreSlim SnapshotWriteGate = new(1, 1);
+        // Each directory gets a monotonically increasing save generation. The gate prevents file
+        // corruption; this map additionally prevents an older queued Task.Run from overwriting a newer
+        // snapshot when the thread pool runs the work items out of order.
+        private static readonly ConcurrentDictionary<string, long> SnapshotSaveGenerations = new(StringComparer.OrdinalIgnoreCase);
 
         /// <param name="snapshotDirectory">
         /// Where the last-good snapshots are persisted so the widget can render real numbers at boot
@@ -171,12 +176,22 @@ namespace CodexQuota.Usage
         /// costs the next boot its restored values.
         /// </summary>
         private static void QueueSnapshotSave(string directory, IReadOnlyDictionary<ProviderId, UsageResult> toPersist)
-            => _ = Task.Run(async () =>
+        {
+            string directoryKey = System.IO.Path.GetFullPath(directory);
+            long generation = SnapshotSaveGenerations.AddOrUpdate(directoryKey, 1, static (_, current) => current + 1);
+
+            _ = Task.Run(async () =>
             {
                 await SnapshotWriteGate.WaitAsync().ConfigureAwait(false);
                 try
                 {
-                    UsageSnapshotStore.Save(directory, toPersist);
+                    if (SnapshotSaveGenerations.TryGetValue(directoryKey, out var latest)
+                        && latest != generation)
+                    {
+                        return;
+                    }
+
+                    UsageSnapshotStore.Save(directoryKey, toPersist);
                 }
                 catch (Exception ex)
                 {
@@ -187,6 +202,7 @@ namespace CodexQuota.Usage
                     SnapshotWriteGate.Release();
                 }
             });
+        }
 
         public bool TryGetLastSuccessfulLiveResult(ProviderId id, out UsageResult result)
         {
@@ -220,7 +236,8 @@ namespace CodexQuota.Usage
 
         private static bool SameSnapshot(UsageSnapshot left, UsageSnapshot right)
         {
-            if (!SameWindow(left.Primary, right.Primary)
+            if (left.HasPrimaryWindow != right.HasPrimaryWindow
+                || !SameWindow(left.Primary, right.Primary)
                 || !SameWindow(left.Secondary, right.Secondary)
                 || !SameWindow(left.ModelSpecific, right.ModelSpecific)
                 || !SameWindow(left.Monthly, right.Monthly)
@@ -251,7 +268,9 @@ namespace CodexQuota.Usage
                     NearlyEqual(l.UsedPercent, r.UsedPercent)
                     && l.WindowMinutes == r.WindowMinutes
                     && l.ResetAt == r.ResetAt
-                    && l.ResetDescription == r.ResetDescription,
+                    && l.ResetDescription == r.ResetDescription
+                    && l.Label == r.Label
+                    && l.ShowCostValue == r.ShowCostValue,
                 _ => false,
             };
 
@@ -275,7 +294,8 @@ namespace CodexQuota.Usage
                 ({ } l, { } r) =>
                     l.Enabled == r.Enabled
                     && NearlyEqual(l.SpentUsd, r.SpentUsd)
-                    && NullableNearlyEqual(l.BudgetUsd, r.BudgetUsd),
+                    && NullableNearlyEqual(l.BudgetUsd, r.BudgetUsd)
+                    && l.IsCredits == r.IsCredits,
                 _ => false,
             };
 

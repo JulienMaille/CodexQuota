@@ -6,8 +6,6 @@ Fork of [TaskbarQuota](https://github.com/zioder/TaskbarQuota) (MIT), trimmed to
 
 > Disclaimer: this codebase is mostly vibe-coded, written with AI assistance and heavy iteration. It is still reviewed, planned, and tested (144 unit tests).
 
-> **Disclaimer:** this codebase is mostly vibe-coded — written with AI assistance and heavy iteration. It is still reviewed, planned, and tested (164 unit tests), but expect pragmatic shortcuts, uneven naming, and occasional structural quirks over textbook architecture. Contributions and cleanup PRs welcome.
-
 ## Screenshots
 
 ![CodexQuota widget in the Windows taskbar](docs/screenshots/taskbar.png)
@@ -40,7 +38,7 @@ dotnet publish src/CodexQuota.App/CodexQuota.App.csproj -c Release -r win-x64 --
 
 ## How it gets data
 
-The app runs on your PC; the only network traffic is a direct call to OpenAI's ChatGPT usage API with your own Codex token (`chatgpt.com/backend-api/wham/usage`, plus the reset-credits and profile endpoints). Token read from `%USERPROFILE%\.codex\auth.json` (or `%CODEX_HOME%`), used in memory only. `chatgpt_base_url` in `~/.codex/config.toml` overrides the endpoint. No telemetry, no cookies, no process scanning.
+The app runs on your PC; the only network traffic is a direct call to OpenAI's ChatGPT usage API with your own Codex token (`chatgpt.com/backend-api/wham/usage`, plus the reset-credits and profile endpoints). Token read from `%USERPROFILE%\.codex\auth.json` (or `%CODEX_HOME%`), used in memory only. `chatgpt_base_url` in `~/.codex/config.toml` overrides the endpoint. No telemetry or cookies. The app locally checks whether a `codex` process is running only to choose a faster refresh cadence; process names and details never leave the machine. To fill the profile endpoint's missing current-day bucket, it also reads local token-count events from `%USERPROFILE%\.codex\sessions` (or `%CODEX_HOME%\sessions`); only aggregated token counts are used.
 
 Logs to `%TEMP%\CodexQuota.log`; usage snapshots persist to `%LOCALAPPDATA%\CodexQuota\usage-snapshots.json`.
 

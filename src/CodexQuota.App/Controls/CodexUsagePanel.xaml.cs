@@ -153,7 +153,9 @@ namespace CodexQuota.Controls
 
             _profileBuckets = profile.DailyUsageBuckets;
 
-            ProfileAsOfText.Text = profile.StatsAsOf is { } asOf ? $"as of {asOf}" : string.Empty;
+            ProfileAsOfText.Text = profile.StatsAsOf is { } asOf
+                ? $"as of {asOf}{(profile.TodayUsageIsLocal ? " · live local sessions" : string.Empty)}"
+                : profile.TodayUsageIsLocal ? "live local sessions" : string.Empty;
 
             var columns = ProfileHeatmapLayout.Build(profile.DailyUsageBuckets);
             var next = new List<UIElement>(columns.Count);

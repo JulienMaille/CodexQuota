@@ -19,6 +19,12 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">win-x64</RuntimeIdentifier>
+    <!-- The .NET CLI defaults Platform to AnyCPU when -r is supplied. Derive the native resource
+         architecture from the RID in that case; Visual Studio/CI can still override it explicitly. -->
+    <CodexQuotaArchitecture Condition="'$(Platform)' == 'x64'">x64</CodexQuotaArchitecture>
+    <CodexQuotaArchitecture Condition="'$(Platform)' == 'ARM64'">ARM64</CodexQuotaArchitecture>
+    <CodexQuotaArchitecture Condition="'$(CodexQuotaArchitecture)' == '' and '$(RuntimeIdentifier)' == 'win-arm64'">ARM64</CodexQuotaArchitecture>
+    <CodexQuotaArchitecture Condition="'$(CodexQuotaArchitecture)' == ''">x64</CodexQuotaArchitecture>
     <!-- Loose .xbf beside the exe; required for unpackaged publish (embedded-only Release PRI was not copied). -->
     <DisableEmbeddedXbf>true</DisableEmbeddedXbf>
     <PublishTrimmed>false</PublishTrimmed>
@@ -45,8 +51,8 @@
       first flyout open unless it sits next to the exe. Committed from the WinAppSDK 2.2.0 runtime
       (redistributable as part of the Windows App Runtime), one copy per architecture.
     -->
-    <Content Include="Libs\$(Platform)\Microsoft.WindowsAppRuntime.Insights.Resource.dll"
-             Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">
+    <Content Include="Libs\$(CodexQuotaArchitecture)\Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+             Condition="'$(CodexQuotaArchitecture)' == 'x64' or '$(CodexQuotaArchitecture)' == 'ARM64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <Link>Microsoft.WindowsAppRuntime.Insights.Resource.dll</Link>

@@ -32,17 +32,17 @@ No charts, no second axis, no settings. If any input is missing, the line hides 
 | Daily token burn | `ProfileUsageBucket[]` (`StartDate`, `Tokens`) | `CodexProfileSnapshot.DailyUsageBuckets` (Profile endpoint) |
 | Reset boundary | reset timestamp | `UsageResult.Reset` (countdown row) |
 
-Notes already documented on `CodexProfileSnapshot`: the Profile endpoint lags and **omits the
-current day** — the pace math below compensates (see "Current-day gap").
+Notes already documented on `CodexProfileSnapshot`: the Profile endpoint lags and may **omit the
+current day**. The app supplements that bucket from local Codex session journals when available.
 
 ## Algorithm (keep it simple)
 
 1. **Daily burn rate** = mean of the last N closed profile days, N = `min(7, buckets.Count)`.
    Skipped days (StartDate increments missing) are counted as 0-burn days — a rest day lowers the
    mean instead of being dropped, which is the honest reading of "pace".
-2. **Current-day gap**: the profile omits today's tokens. Add today's *usage delta* (from the
-   quota fetch: `limit - remaining` moved since the last snapshot), clamped ≥ 0, into the burn
-   window as a partial day.
+2. **Current-day gap**: the profile may omit today's tokens. Add today's locally observed token
+   count from Codex session journals when the server bucket is missing or lower; historical server
+   buckets remain authoritative.
 3. **Burn-adjusted days left** `=` remainingTokens / dailyRate.
 4. **Cap date** = `now + daysLeft` (calendar day, e.g. `Wed`).
    - if `cap ≤ reset`: `tight`/`burned` when `reset - cap ≤ 2d` / `cap == now`
@@ -100,9 +100,14 @@ public static class PaceLine
   computed on the used-percent slope instead: `daysToCap = (100 - used) * elapsed / used`, with
   `elapsed = now - (resetAt - windowMinutes)`. The bucket mean supplies the human "~5.2k tok/day"
   label only.
-- `RemainingPercent` (output) = `daysToCap / daysToReset` clamped to 0..100, fed into the existing
-  `QuotaDisplay.BrushKeyForRemaining` so the configured 50/20 thresholds color the line (this is
-  the doc's open question, resolved toward the fold-in).
+- Before presenting that projection as a warning, compare `used` with the ideal elapsed-time
+  percentage (`elapsed / windowMinutes * 100`). A deviation of up to two percentage points is
+  treated as on track, matching Win-CodexBar's pace stages; in that band the line stays neutral
+  and says the quota resets before the projected cap. This prevents a 1% first sample shortly
+  after reset from extrapolating into a false runout warning.
+- `RemainingPercent` (output) = `daysToCap / daysToReset` only for a materially-ahead pace that
+  exhausts before reset; otherwise it is 100, fed into the existing
+  `QuotaDisplay.BrushKeyForRemaining` so the configured 50/20 thresholds color the warning line.
 - Bucket dates are not parsed; only their count and token values matter (≤ 7 newest buckets).
   Rest days are literal 0-token buckets in the feed, so they lower the mean naturally.
 

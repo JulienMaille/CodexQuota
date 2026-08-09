@@ -86,12 +86,29 @@ public class FetchCachePolicyTests
         Assert.Equal(2, provider.FetchCount);
     }
 
+    [Fact]
+    public async Task FetchAsync_WindowVisibilityChange_IsNotCollapsedAsSameUsage()
+    {
+        var service = new UsageService();
+        var provider = new FlakyProvider();
+        service.Register(provider);
+
+        var first = await service.FetchAsync(ProviderId.Codex, force: true);
+        provider.NextHasPrimaryWindow = false;
+
+        var second = await service.FetchAsync(ProviderId.Codex, force: true);
+
+        Assert.NotSame(first, second);
+        Assert.False(second.Fetch!.Usage.HasPrimaryWindow);
+    }
+
     private sealed class FlakyProvider : IUsageProvider
     {
         public ProviderException? NextException { get; set; }
         public double? NextPrimaryPercent { get; set; }
         public double? NextSecondaryPercent { get; set; }
         public DateTimeOffset? NextResetAt { get; set; }
+        public bool? NextHasPrimaryWindow { get; set; }
         public int FetchCount { get; private set; }
 
         public ProviderId Id => ProviderId.Codex;
@@ -111,12 +128,14 @@ public class FetchCachePolicyTests
 
             var usage = new UsageSnapshot(new RateWindow(NextPrimaryPercent ?? 42, resetAt: NextResetAt))
             {
+                HasPrimaryWindow = NextHasPrimaryWindow ?? true,
                 Secondary = new RateWindow(NextSecondaryPercent ?? 73, resetAt: NextResetAt),
                 LoginMethod = "Max",
             };
             NextPrimaryPercent = null;
             NextSecondaryPercent = null;
             NextResetAt = null;
+            NextHasPrimaryWindow = null;
             return Task.FromResult(new ProviderFetchResult(usage, "live"));
         }
     }

@@ -493,6 +493,7 @@ namespace CodexQuota.Controls
             parts.Add(fetch.SourceLabel);
             parts.Add(usage.LoginMethod ?? string.Empty);
             parts.Add(usage.Email ?? string.Empty);
+            parts.Add(usage.HasPrimaryWindow ? "primary" : "credits-only");
             parts.Add(usage.Cost?.Display ?? string.Empty);
             if (usage.AdditionalUsage is { Enabled: true } additional)
             {
@@ -533,7 +534,11 @@ namespace CodexQuota.Controls
             }
 
             parts.Add(window.UsedPercent.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            parts.Add(window.WindowMinutes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+            parts.Add(window.ResetAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
             parts.Add(window.ResetDescription ?? string.Empty);
+            parts.Add(window.Label ?? string.Empty);
+            parts.Add(window.ShowCostValue ? "cost" : "percent");
         }
 
         private static string FormatPlanLabel(ProviderId id, string displayName, string? loginMethod)

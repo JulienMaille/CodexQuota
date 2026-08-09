@@ -52,6 +52,8 @@ namespace CodexQuota.Usage.Providers
 
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex token expired. Run `codex login`.");
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                throw new ProviderException(ProviderErrorKind.RateLimited, "Codex API rate limit reached.");
 
             if (!response.IsSuccessStatusCode)
                 throw new ProviderException(ProviderErrorKind.Other, $"Codex API returned {(int)response.StatusCode}");
@@ -146,7 +148,8 @@ namespace CodexQuota.Usage.Providers
         /// Fetches the account's Profile summary (<c>/wham/profiles/me</c>) — the data behind the
         /// Codex/ChatGPT Profile dashboard: lifetime tokens, peak daily tokens, longest running turn,
         /// streaks, token-activity buckets, and most-used plugins/skills. Server-side aggregation, so
-        /// values lag real usage and the current day's bucket may be absent.
+        /// values lag real usage and the current day's bucket may be absent; local session journals
+        /// supplement that one bucket when available.
         /// </summary>
         public async Task<CodexProfileSnapshot> FetchProfileAsync(CancellationToken ct = default)
         {
@@ -162,13 +165,17 @@ namespace CodexQuota.Usage.Providers
 
                 if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                     throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex token expired. Run `codex login`.");
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    throw new ProviderException(ProviderErrorKind.RateLimited, "Codex profile API rate limit reached.");
 
                 if (!response.IsSuccessStatusCode)
                     throw new ProviderException(ProviderErrorKind.Other, $"Codex profile API returned {(int)response.StatusCode}");
 
                 using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
-                return ParseProfile(doc.RootElement);
+                var profile = ParseProfile(doc.RootElement);
+                var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+                return profile.WithLiveToday(today, LocalCodexUsageScanner.ReadTodayTokens(today));
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
