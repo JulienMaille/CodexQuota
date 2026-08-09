@@ -1,24 +1,19 @@
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Input;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Globalization;
 using System.Linq;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics;
-using Windows.System;
 using CodexQuota.Controls;
 using CodexQuota.Diagnostics;
 using CodexQuota.Interop;
 using CodexQuota.Usage;
-using Anim = Microsoft.UI.Xaml.Media.Animation;
 
 namespace CodexQuota.Taskbar
 {
@@ -42,28 +37,20 @@ namespace CodexQuota.Taskbar
         // Fixed width of the "|" divider drawn between adjacent tiles. Fixed rather than measured so the
         // fit math stays exact and doesn't depend on a layout pass having run.
         private const int TileSeparatorLogicalPx = 7;
-        private const int LayoutTransitionMilliseconds = 190;
         // Space assumed available before the first position pass has measured the real taskbar gap. Wide
         // enough for three tiles; the first pass corrects it either way.
         private const int DefaultAvailableLogicalWidth = 640;
-        // A tile only animates when it genuinely moved; below this a value simply changed width.
-        private const int TileMoveThresholdLogicalPx = 8;
-        // How far a newly shown tile eases in from. Short enough to stay inside the host window, so it
-        // reads as arriving rather than being clipped off the taskbar edge.
-        private const int TileEntryOffsetLogicalPx = 28;
         private static readonly TimeSpan PositionDisposeWait = TimeSpan.FromSeconds(3);
         private const int ERROR_CLASS_ALREADY_EXISTS = 1410;
         // Approx width of the Win11 far-left Widgets/weather pill; used to reserve clearance when its exact
         // bounds can't be read via UIA, so the widget never anchors on top of it (issue #17).
         private const int WidgetsButtonFallbackLogicalPx = 160;
-        private const int VK_LBUTTON = 0x01;
 
         private static readonly bool IsRtlUI = System.Globalization.CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
         private static readonly object WindowClassLock = new();
         private static readonly WndProc SharedWndProc = SharedWindowProc;
         private static bool windowClassRegistered;
         private static int windowClassUsers;
-        private static int userRepositioningCount;
 
         // Minimum horizontal recompute delta (logical px, DPI-scaled) before the resting widget is moved.
         private int RepositionDeadbandPx => (int)Math.Ceiling(2 * dpiScale);
@@ -79,7 +66,6 @@ namespace CodexQuota.Taskbar
         private readonly string displayKey;
         private readonly string WidgetClassName = "CodexQuotaWidgetWinRT";
         private readonly TaskbarStructureWatcher taskbarWatcher;
-        private readonly string positionPath;
         private readonly CancellationTokenSource positionUpdateCancellation = new();
         private readonly SemaphoreSlim positionUpdateGate = new(1, 1);
         private readonly object positionRequestLock = new();
@@ -106,10 +92,6 @@ namespace CodexQuota.Taskbar
         private readonly int[] layoutSlots = new int[UsageCoordinator.MaxWidgetTiles];
         private readonly int[] layoutWidths = new int[UsageCoordinator.MaxWidgetTiles];
         private ProviderId? activeTileProvider;
-        // Where each shown provider sat in the last layout, so the next one can animate the difference.
-        // Double-buffered and swapped each pass so a layout allocates no dictionary.
-        private Dictionary<ProviderId, int> lastTilePositions = new();
-        private Dictionary<ProviderId, int> tilePositions = new();
         private Microsoft.UI.Xaml.Media.Brush? separatorBrush;
         private bool? separatorBrushIsLight;
         private Microsoft.UI.Xaml.Controls.StackPanel? summaryPanel;
@@ -125,49 +107,15 @@ namespace CodexQuota.Taskbar
         private bool loggedMissingPanel;
         private DesktopWindowXamlSource? host;
         private Microsoft.UI.Xaml.FrameworkElement? hostContent;
-        // Show/hide cross-fade state. Short on purpose: the widget lives on the taskbar, so anything
-        // slower reads as lag rather than as a transition.
-        private const int HostFadeMilliseconds = 100;
-        private Anim.Storyboard? hostFadeStoryboard;
-        private Anim.Storyboard? quotaLayoutStoryboard;
-        private int hostFadeGeneration;
         private int WidgetHostWidth;
         private int currentOffsetX = int.MinValue;
         private int currentOffsetY = 0;
-        // Last known Widgets/weather pill bounds in taskbar-client coords, captured during the resting
-        // reposition so the synchronous drag path can avoid it without an async UIA read.
+        // Last known Widgets/weather pill bounds in taskbar-client coords, captured during positioning.
         private RECT? lastWidgetsButtonClientRect;
         // Last known taskbar button bounds (app icons + system buttons) in taskbar-client coords. On Win11
         // the app icons are XAML, not classic child windows, so they only come from a UIA scan; cached here
-        // so the synchronous drag path avoids them without an async read (issue #17).
+        // so later positioning passes can reuse them without an async read (issue #17).
         private List<RECT> lastTaskButtonClientRects = new();
-        private bool isDragging;
-        private bool isPointerTracking;
-        private bool isDirectDrag;
-        private Microsoft.UI.Xaml.DispatcherTimer? dragPollTimer;
-
-        // True while the user is actively repositioning the widget (tray "Move" mode or a direct pointer
-        // drag). Background repositions (2s watcher poll, taskbar events) must not fire during this, or the
-        // widget snaps back to a computed lane mid-drag (issue #17 case 2).
-        // isSettling covers the async snap right after release: without it a watcher poll landing mid-snap
-        // would recompute a resting position from the not-yet-saved offset and yank the widget away.
-        // Public so the coordinator can treat the widget as our own UI while the user is moving it. Without
-        // this, the focus-following option sees the drag host become foreground, hides the widget, and the
-        // hide path restores the old position in the middle of the drag.
-        public bool IsUserRepositioning => isDragging || isPointerTracking || isDirectDrag || isSettling;
-        public static bool IsAnyUserRepositioning => Volatile.Read(ref userRepositioningCount) > 0;
-        private bool userRepositioningRegistered;
-        private bool isSettling;
-        private int draggingInnerOffsetX;
-        // Where the drag currently sits, and the free gap it is tracking the cursor inside.
-        private int? dragPreviewX;
-        private (int start, int end)? activeDragGap;
-        // Last drag solve written to the log, so a held drag logs on change instead of once per pointer sample.
-        private (int start, int end)? loggedDragZone;
-        private int loggedDragGapHash;
-        private int lastCursorPositionX;
-        private int pressCursorPositionX;
-        private int dragOriginX;
         private bool initialized;
         private bool destroyed;
         private bool isVisible;
@@ -175,16 +123,11 @@ namespace CodexQuota.Taskbar
         private bool disposedValue;
         private bool positionRunnerActive;
         private bool positionUpdatePending;
-        private TaskbarChangeReason pendingPositionReason;
         private bool pendingTaskbarCentered;
         private bool pendingTaskbarWidgetsEnabled;
 
         public IntPtr Handle => hwnd != IntPtr.Zero ? hwnd : throw new InvalidOperationException("Widget not initialized.");
         public bool IsAlive => hwnd != IntPtr.Zero && User32.IsWindow(hwnd);
-        private AppWindow? DragAppWindow => appWindow;
-        private Microsoft.UI.Xaml.FrameworkElement? DragContent => hostContent;
-        private int DragWidth => WidgetHostWidth;
-        private int DragCurrentOffsetX => currentOffsetX;
         /// <summary>True once <see cref="Initialize"/> has built the tile panel. A live window without it can
         /// render nothing at all, so the manager treats that pairing as a dead widget and recreates it.</summary>
         public bool IsHostContentReady => summaryPanel is not null;
@@ -228,13 +171,11 @@ namespace CodexQuota.Taskbar
             dpiScale = taskbarDpi / 96d;
             WidgetHostWidth = (int)Math.Ceiling(dpiScale * DefaultWidgetHostWidth);
             Log.Debug($"Widget ctor: taskbar=0x{hwndShell.ToInt64():X}, primary={isPrimaryTaskbar}, DPI={taskbarDpi}, Width={WidgetHostWidth}");
-            positionPath = target.GetPositionPath();
-
             taskbarWatcher = new TaskbarStructureWatcher(hwndShell, hwndReBar);
             taskbarWatcher.TaskbarChangedNotificationCompleted += (_, e) =>
             {
                 if (initialized)
-                    QueuePositionUpdate(e.Reason, e.IsTaskbarCentered, e.IsTaskbarWidgetsEnabled);
+                    QueuePositionUpdate(e.IsTaskbarCentered, e.IsTaskbarWidgetsEnabled);
             };
         }
 
@@ -264,13 +205,12 @@ namespace CodexQuota.Taskbar
             {
                 Children = { summaryPanel },
                 Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Colors.Transparent),
-                RenderTransform = new Microsoft.UI.Xaml.Media.CompositeTransform(),
             };
             host.Content = hostContent;
             ResizeWidgetHost(DefaultWidgetHostWidth);
 
             InjectIntoTaskbar();
-            QueuePositionUpdate(TaskbarChangeReason.None);
+            QueuePositionUpdate();
 
             initialized = true;
             Log.Information("Widget host initialization done");
@@ -325,11 +265,7 @@ namespace CodexQuota.Taskbar
                 && target.IsPrimary == isPrimaryTaskbar
                 && string.Equals(target.DisplayKey, displayKey, StringComparison.Ordinal);
 
-        /// <summary>
-        /// Shows or hides the widget with a short cross-fade. A native window can't be animated, so the
-        /// XAML content carries the fade and the window is only hidden once it has finished — otherwise
-        /// the "hide when no provider is focused" setting made the widget vanish in a single frame.
-        /// </summary>
+        /// <summary>Shows or hides the taskbar host using the native window state.</summary>
         public void SetVisible(bool visible)
         {
             if (appWindow is null)
@@ -342,101 +278,20 @@ namespace CodexQuota.Taskbar
                 return;
 
             isVisible = visible;
-            // Invalidates any fade still in flight, so a show landing mid-hide cancels that hide's window
-            // teardown instead of racing it.
-            hostFadeGeneration++;
 
             if (visible)
             {
-                QueuePositionUpdate(TaskbarChangeReason.None);
-                if (hostContent is not null)
-                    hostContent.Opacity = 0;
+                QueuePositionUpdate();
                 appWindow.Show(false);
-                AnimateHostOpacity(1);
                 return;
             }
 
-            if (isDragging)
-                EndDragging(revert: true);
-
-            if (hostContent is null)
-            {
-                appWindow.Hide();
-                return;
-            }
-
-            int generation = hostFadeGeneration;
-            AnimateHostOpacity(0, () =>
-            {
-                if (generation != hostFadeGeneration || destroyed || appWindow is null)
-                    return;
-
-                appWindow.Hide();
-                // Leave the content opaque again so the next Show has nothing to undo if it takes the
-                // no-animation path (e.g. the host was rebuilt in between).
-                if (hostContent is { } content)
-                    content.Opacity = 1;
-            });
-        }
-
-        private void AnimateHostOpacity(double to, Action? completed = null)
-        {
-            if (hostContent is not { } content)
-            {
-                completed?.Invoke();
-                return;
-            }
-
-            hostFadeStoryboard?.Stop();
-
-            double from = content.Opacity;
-
-            // When hiding (to == 0) we always run the storyboard, even if the content is already
-            // near-transparent: skipping it would call the completion immediately, which hides the
-            // window without any animation and is the "instant disappear" the user saw.
-            // When showing (to == 1) skip is fine — nothing to animate if we're already opaque.
-            bool skip = Math.Abs(from - to) < 0.01 && to > 0.5;
-            if (skip)
-            {
-                content.Opacity = to;
-                completed?.Invoke();
-                return;
-            }
-
-            // Park the local value at the destination and let the animation supply the start through From,
-            // the same rule the tile animations follow: an interrupted fade then settles visible rather
-            // than leaving the host stuck transparent.
-            content.Opacity = to;
-
-            var animation = new Anim.DoubleAnimation
-            {
-                From = from < 0.01 ? 0.15 : from, // guarantee at least a short visible flash so the fade is perceptible
-                To = to,
-                Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(HostFadeMilliseconds)),
-                EasingFunction = new Anim.CubicEase { EasingMode = Anim.EasingMode.EaseOut },
-            };
-            Anim.Storyboard.SetTarget(animation, content);
-            Anim.Storyboard.SetTargetProperty(animation, "Opacity");
-
-            var storyboard = new Anim.Storyboard();
-            storyboard.Children.Add(animation);
-            if (completed is not null)
-                storyboard.Completed += (_, _) => completed();
-
-            hostFadeStoryboard = storyboard;
-            storyboard.Begin();
+            appWindow.Hide();
         }
 
         public void Destroy() => appWindow?.Destroy();
 
-        public void UpdatePosition(bool resetManualPosition = false)
-        {
-            if (resetManualPosition)
-            {
-                SaveCustomPosition(-1);
-            }
-            QueuePositionUpdate(TaskbarChangeReason.None);
-        }
+        public void UpdatePosition() => QueuePositionUpdate();
 
         private Microsoft.UI.Xaml.Controls.StackPanel BuildSummaryPanel()
         {
@@ -474,10 +329,7 @@ namespace CodexQuota.Taskbar
                 Visibility = Microsoft.UI.Xaml.Visibility.Collapsed,
             };
             summary.DesiredHostWidthChanged += WidgetSummary_DesiredHostWidthChanged;
-            summary.PointerPressed += WidgetSummary_PointerPressed;
-            summary.PointerMoved += WidgetSummary_PointerMoved;
-            summary.PointerReleased += WidgetSummary_PointerReleased;
-            summary.PointerCanceled += WidgetSummary_PointerCanceled;
+            // Taskbar placement is automatic; tiles are intentionally click-only.
             summary.Clicked += OnTileClicked;
             return summary;
         }
@@ -533,12 +385,9 @@ namespace CodexQuota.Taskbar
                 tileProviders[i] = desired;
                 changed = true;
                 // Repaint the slot for its new provider straight away, so a re-order never leaves a tile
-                // showing the previous provider's rows under the new provider's turn to be fetched. The
-                // cross-fade is suppressed because the movement is carried by the slide animation instead;
-                // doing both at once is what made adding a third provider look like a flicker.
+                // showing the previous provider's rows under the new provider's turn to be fetched.
                 if (desired is { } provider && HydrateProvider?.Invoke(provider) is { } seed)
                 {
-                    tiles[i].SuppressNextTransition = true;
                     tiles[i].Apply(seed, force: true);
                 }
             }
@@ -577,8 +426,7 @@ namespace CodexQuota.Taskbar
         /// the transient case of an unpinned active tool arriving beside a full pinned set.
         ///
         /// Widths are measured, never rendered: <see cref="WidgetSummary.MeasureDesiredWidth"/> is a pure
-        /// calculation over the columns, whereas rendering to read a width restarted the tile's refresh
-        /// animation on every usage publish and read as a tile flashing once a second.
+        /// calculation over the columns, so layout measurement never changes what the user sees.
         /// </summary>
         private void RecomputeLayout(bool forceReposition = false)
         {
@@ -622,8 +470,6 @@ namespace CodexQuota.Taskbar
                 count = HoldBackTilesThatDoNotFit(layoutSlots, count, 0);
 
                 // Widths are measured, never rendered — MeasureDesiredWidth is a pure calculation.
-                // Rendering to measure made the tile restart its refresh animation on every usage publish,
-                // which read as a tile flashing about once a second.
                 var brush = TaskbarForegroundBrush();
                 int total = 0;
                 for (int n = 0; n < count; n++)
@@ -652,8 +498,6 @@ namespace CodexQuota.Taskbar
                         : Microsoft.UI.Xaml.Visibility.Collapsed;
                     separators[i].Foreground = brush;
                 }
-
-                AnimateTileMovement(layoutSlots, count, layoutWidths);
 
                 // The layout is recomputed on every usage publish, so only report an actual change — and
                 // decide that from a hash, so the unchanged case (nearly all of them) formats no string.
@@ -794,55 +638,6 @@ namespace CodexQuota.Taskbar
         }
 
         /// <summary>
-        /// Animates tiles from wherever their provider sat last time to wherever it sits now, so a set or
-        /// order change reads as movement: the tiles already on the bar travel sideways to make room and a
-        /// newly shown provider eases in rather than appearing fully formed.
-        ///
-        /// Positions are tracked per PROVIDER, not per slot, which is what makes this work at all — the
-        /// slots are a fixed pool and providers move between them, so slot identity says nothing about what
-        /// the user saw move.
-        /// </summary>
-        private void AnimateTileMovement(int[] slots, int count, int[] widths)
-        {
-            // Scratch dictionary owned by this widget and cleared per pass, then swapped with the previous
-            // one below — the layout runs on every usage publish, so a fresh dictionary each time was the
-            // single largest per-pass allocation here.
-            var positions = tilePositions;
-            positions.Clear();
-
-            int x = TileHorizontalMarginLogicalPx / 2;
-            for (int n = 0; n < count; n++)
-            {
-                if (tileProviders[slots[n]] is { } provider)
-                    positions[provider] = x;
-                x += widths[n] + TileHorizontalMarginLogicalPx + TileSeparatorLogicalPx;
-            }
-
-            // First layout of the session: the tiles have their own reveal animation, nothing to move from.
-            bool hadPositions = lastTilePositions.Count > 0;
-            for (int n = 0; n < count; n++)
-            {
-                if (tileProviders[slots[n]] is not { } provider)
-                    continue;
-
-                int target = positions[provider];
-                if (lastTilePositions.TryGetValue(provider, out int previous))
-                {
-                    // Ignore sub-threshold drift from a value changing width; only real moves animate.
-                    if (Math.Abs(previous - target) >= TileMoveThresholdLogicalPx)
-                        tiles[slots[n]].AnimateSlide(previous - target);
-                }
-                else if (hadPositions)
-                {
-                    tiles[slots[n]].AnimateSlide(-TileEntryOffsetLogicalPx);
-                }
-            }
-
-            // Swap rather than reassign: the outgoing dictionary becomes next pass's scratch buffer.
-            (lastTilePositions, tilePositions) = (positions, lastTilePositions);
-        }
-
-        /// <summary>
         /// Separator colour for the current system theme. Cached: the layout pass runs on every usage
         /// publish and on the 5s health tick, and a fresh SolidColorBrush per separator per pass was steady
         /// garbage for a value that only changes when the user switches theme.
@@ -885,74 +680,20 @@ namespace CodexQuota.Taskbar
 
             WidgetHostWidth = width;
             appWindow.ResizeClient(new SizeInt32(WidgetHostWidth, appWindow.Size.Height));
-            AnimateLayoutSurface(hostContent, ref quotaLayoutStoryboard, 0);
             return true;
         }
 
-        private static void AnimateLayoutSurface(
-            Microsoft.UI.Xaml.FrameworkElement? content,
-            ref Anim.Storyboard? storyboard,
-            int travel)
-        {
-            if (content?.RenderTransform is not Microsoft.UI.Xaml.Media.CompositeTransform transform)
-                return;
+        private void QueuePositionUpdate()
+            => QueuePositionUpdate(SystemInfos.IsTaskBarCentered(), SystemInfos.IsTaskBarWidgetsEnabled());
 
-            storyboard?.Stop();
-            transform.TranslateX = travel;
-            transform.ScaleX = 0.985;
-            content.Opacity = Math.Min(content.Opacity <= 0 ? 1 : content.Opacity, 0.94);
-
-            var easing = new Anim.CubicEase { EasingMode = Anim.EasingMode.EaseOut };
-            var slide = new Anim.DoubleAnimation
-            {
-                To = 0,
-                Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(LayoutTransitionMilliseconds)),
-                EasingFunction = easing,
-                EnableDependentAnimation = true,
-            };
-            Anim.Storyboard.SetTarget(slide, transform);
-            Anim.Storyboard.SetTargetProperty(slide, "TranslateX");
-
-            var scale = new Anim.DoubleAnimation
-            {
-                To = 1,
-                Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(LayoutTransitionMilliseconds)),
-                EasingFunction = easing,
-            };
-            Anim.Storyboard.SetTarget(scale, transform);
-            Anim.Storyboard.SetTargetProperty(scale, "ScaleX");
-
-            var fade = new Anim.DoubleAnimation
-            {
-                To = 1,
-                Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(LayoutTransitionMilliseconds)),
-                EasingFunction = easing,
-            };
-            Anim.Storyboard.SetTarget(fade, content);
-            Anim.Storyboard.SetTargetProperty(fade, "Opacity");
-
-            var next = new Anim.Storyboard();
-            next.Children.Add(slide);
-            next.Children.Add(scale);
-            next.Children.Add(fade);
-            storyboard = next;
-            next.Begin();
-        }
-
-        private void QueuePositionUpdate(TaskbarChangeReason reason)
-            => QueuePositionUpdate(reason, SystemInfos.IsTaskBarCentered(), SystemInfos.IsTaskBarWidgetsEnabled());
-
-        private void QueuePositionUpdate(TaskbarChangeReason reason, bool isCentered, bool isWidgetsEnabled)
+        private void QueuePositionUpdate(bool isCentered, bool isWidgetsEnabled)
         {
             lock (positionRequestLock)
             {
                 if (disposedValue)
                     return;
 
-                // Coalesce any number of watcher/layout requests into the latest pending state. Alignment
-                // invalidates a saved manual position, so preserve that reason until the pending pass runs.
-                if (!positionUpdatePending || reason == TaskbarChangeReason.Alignment)
-                    pendingPositionReason = reason;
+                // Coalesce any number of watcher/layout requests into the latest pending state.
                 pendingTaskbarCentered = isCentered;
                 pendingTaskbarWidgetsEnabled = isWidgetsEnabled;
                 positionUpdatePending = true;
@@ -970,7 +711,6 @@ namespace CodexQuota.Taskbar
         {
             while (true)
             {
-                TaskbarChangeReason reason;
                 bool isCentered;
                 bool isWidgetsEnabled;
                 lock (positionRequestLock)
@@ -981,17 +721,16 @@ namespace CodexQuota.Taskbar
                         return;
                     }
 
-                    reason = pendingPositionReason;
                     isCentered = pendingTaskbarCentered;
                     isWidgetsEnabled = pendingTaskbarWidgetsEnabled;
                     positionUpdatePending = false;
                 }
 
-                await UpdatePositionImpl(reason, isCentered, isWidgetsEnabled);
+                await UpdatePositionImpl(isCentered, isWidgetsEnabled);
             }
         }
 
-        private async Task UpdatePositionImpl(TaskbarChangeReason reason, bool isCentered, bool isWidgetsEnabled)
+        private async Task UpdatePositionImpl(bool isCentered, bool isWidgetsEnabled)
         {
             bool gateAcquired = false;
             var cancellationToken = positionUpdateCancellation.Token;
@@ -1001,7 +740,7 @@ namespace CodexQuota.Taskbar
                 gateAcquired = true;
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (disposedValue || appWindow is null || IsUserRepositioning)
+                if (disposedValue || appWindow is null)
                     return;
                 if (!TryGetLayoutRects(
                         out RECT taskbarScreenRect,
@@ -1016,19 +755,6 @@ namespace CodexQuota.Taskbar
                 var trayNotifyRect = ToTaskbarClientRect(notificationScreenRect, taskbarScreenRect);
                 var barRect = ToTaskbarClientRect(barScreenRect, taskbarScreenRect);
 
-                int offsetX = LoadCustomPosition();
-                // Taskbar alignment flipped (e.g. centered -> left): the old manual position now sits on the
-                // wrong side, so discard it and re-anchor to the new side's default lane (issue #10).
-                if (reason == TaskbarChangeReason.Alignment && offsetX != -1)
-                {
-                    SaveCustomPosition(-1);
-                    offsetX = -1;
-                }
-                bool useDefault = offsetX == -1;
-
-                // The widget is a left-side taskbar surface by default. A saved custom position remains
-                // authoritative.
-
                 // The Widgets/weather pill is a XAML element the child-window scan can't see, so fetch its
                 // bounds separately (UIA, with a cached fallback) and treat it as an obstacle like any other.
                 RECT? wbRect = isWidgetsEnabled ? await taskbarWatcher.GetWidgetsButtonRectAsync() : null;
@@ -1037,7 +763,7 @@ namespace CodexQuota.Taskbar
                 lastWidgetsButtonClientRect = wbClient;
 
                 // UIA scan of the taskbar's buttons — the only way to see the Win11 XAML app icons. Cache the
-                // client rects so the synchronous drag path can reuse them without an async read.
+                // client rects so later positioning passes can reuse them without an async read.
                 var taskButtonRects = await taskbarWatcher.GetTaskbarButtonRectsAsync();
                 cancellationToken.ThrowIfCancellationRequested();
                 if (taskButtonRects is not null)
@@ -1054,11 +780,9 @@ namespace CodexQuota.Taskbar
                     TrayClearancePx,
                     IsRtlUI);
 
-                // Preferred X: the saved manual position, or the side-appropriate default anchor.
+                // Preferred X: the side-appropriate default anchor.
                 int preferredX;
-                if (!useDefault)
-                    preferredX = offsetX;
-                else if (IsRtlUI && hasNotificationArea)
+                if (IsRtlUI && hasNotificationArea)
                     preferredX = ComputeFarLeftAnchor(taskbarRect, trayNotifyRect, wbRect, taskbarScreenRect, isCentered, isWidgetsEnabled);
                 else if (IsRtlUI)
                     preferredX = rightBound - WidgetHostWidth;
@@ -1068,7 +792,7 @@ namespace CodexQuota.Taskbar
                     preferredX = leftBound;
 
                 // Every taskbar button (app icons + system buttons) is an obstacle, so the widget can never rest
-                // on top of the app cluster — same set for resting and dragging (issue #17).
+                // on top of the app cluster (issue #17).
                 var obstacles = CollectObstacleClientRects(taskbarScreenRect, wbClient, lastTaskButtonClientRects);
 
                 // Only ever rest inside a gap that FULLY fits the widget; if none does, don't move it into an
@@ -1079,6 +803,7 @@ namespace CodexQuota.Taskbar
                 UpdateAvailableWidth(gaps);
 
                 int? placed = PlaceInFittingGap(preferredX, gaps, WidgetHostWidth);
+                int offsetX;
                 if (placed is not { } fitX)
                 {
                     if (currentOffsetX != int.MinValue)
@@ -1105,7 +830,6 @@ namespace CodexQuota.Taskbar
                 if (disposedValue || targetAppWindow is null || !IsAlive)
                     return;
 
-                int previousQuotaOffsetX = currentOffsetX;
                 if (currentOffsetY != offsetY)
                 {
                     targetAppWindow.MoveAndResize(new RectInt32(offsetX, offsetY, WidgetHostWidth, barRect.bottom - barRect.top));
@@ -1116,8 +840,6 @@ namespace CodexQuota.Taskbar
                     targetAppWindow.Move(new PointInt32(offsetX, offsetY));
                     currentOffsetX = offsetX;
                 }
-                if (previousQuotaOffsetX != int.MinValue && previousQuotaOffsetX != offsetX)
-                    AnimateLayoutSurface(hostContent, ref quotaLayoutStoryboard, previousQuotaOffsetX - offsetX);
             }
             catch (OperationCanceledException)
             {
@@ -1144,624 +866,11 @@ namespace CodexQuota.Taskbar
             => currentOffsetX == int.MinValue
             || Math.Abs((long)currentOffsetX - offsetX) >= deadbandPx;
 
-        public void EndDragging(bool revert)
-        {
-            StopDragPolling();
-            var dragWindow = DragAppWindow;
-            var dragContent = DragContent;
-            if (!isDragging || dragWindow is null || dragContent is null || summaryPanel is null)
-            {
-                if (!isDragging && !isPointerTracking && !isDirectDrag)
-                    EndUserRepositioning();
-                return;
-            }
-            isDragging = false;
-            dragContent.ReleasePointerCaptures();
-            dragContent.KeyUp -= Content_KeyUp;
-            dragContent.PointerMoved -= Content_PointerMoved;
-            dragContent.PointerPressed -= Content_PointerPressed;
-            dragContent.PointerReleased -= Content_PointerReleased;
-            if (revert)
-            {
-                RestoreDragOrigins();
-                QueuePositionUpdate(TaskbarChangeReason.None);
-                EndUserRepositioning();
-                return;
-            }
-            _ = SnapToValidPositionAsync(dragPreviewX ?? dragWindow.Position.X);
-        }
-
-        private void Content_KeyUp(object sender, KeyRoutedEventArgs e)
-        {
-            if (e.Key == VirtualKey.Escape)
-                EndDragging(true);
-        }
-
-        private void Content_PointerPressed(object sender, PointerRoutedEventArgs e)
-        {
-            var dragWindow = DragAppWindow;
-            var dragContent = DragContent;
-            if (dragWindow is null || dragContent is null) return;
-            e.Handled = true;
-            dragContent.PointerMoved += Content_PointerMoved;
-            dragContent.CapturePointer(e.Pointer);
-            User32.GetCursorPos(out var point);
-            lastCursorPositionX = point.x;
-            User32.GetWindowRect(hwndShell, out var taskbarRect);
-            draggingInnerOffsetX = point.x - taskbarRect.left - dragWindow.Position.X;
-            StartDragPolling();
-        }
-
-        private void Content_PointerReleased(object sender, PointerRoutedEventArgs e)
-        {
-            StopDragPolling();
-            EndDragging(false);
-        }
-
-        private void Content_PointerMoved(object sender, PointerRoutedEventArgs e)
-        {
-            if (appWindow is null || hostContent is null) return;
-            hostContent.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-        }
-
-        private void WidgetSummary_PointerPressed(object sender, PointerRoutedEventArgs e)
-        {
-            var dragWindow = appWindow;
-            if (dragWindow is null || sender is not Microsoft.UI.Xaml.UIElement element) return;
-            CaptureDragOrigins();
-            BeginUserRepositioning();
-            isPointerTracking = true;
-            isDirectDrag = false;
-            PrimeObstacleCacheForDrag();
-            element.CapturePointer(e.Pointer);
-            User32.GetCursorPos(out var point);
-            pressCursorPositionX = point.x;
-            lastCursorPositionX = point.x;
-            User32.GetWindowRect(hwndShell, out var taskbarRect);
-            draggingInnerOffsetX = point.x - taskbarRect.left - dragWindow.Position.X;
-            StartDragPolling();
-        }
-
-        private void WidgetSummary_PointerMoved(object sender, PointerRoutedEventArgs e)
-        {
-            if (!isPointerTracking || DragAppWindow is null || sender is not Microsoft.UI.Xaml.UIElement) return;
-            User32.GetCursorPos(out var point);
-            if (!isDirectDrag)
-            {
-                if (Math.Abs(point.x - pressCursorPositionX) < Math.Ceiling(4 * dpiScale))
-                    return;
-                BeginDirectDrag();
-                e.Handled = true;
-            }
-
-            SuppressTileClicks();
-        }
-
-        private void WidgetSummary_PointerReleased(object sender, PointerRoutedEventArgs e)
-        {
-            StopDragPolling();
-            if (!isPointerTracking)
-                return;
-            bool wasDirectDrag = isDirectDrag;
-            (sender as Microsoft.UI.Xaml.UIElement)?.ReleasePointerCaptures();
-            if (wasDirectDrag && DragAppWindow is not null)
-            {
-                _ = SnapToValidPositionAsync(dragPreviewX ?? DragAppWindow.Position.X);
-                SuppressTileClicks();
-                e.Handled = true;
-            }
-            isPointerTracking = false;
-            isDirectDrag = false;
-            if (!wasDirectDrag)
-            {
-                EndUserRepositioning();
-            }
-        }
-
-        private void WidgetSummary_PointerCanceled(object sender, PointerRoutedEventArgs e)
-        {
-            StopDragPolling();
-            if (!isPointerTracking)
-                return;
-            bool wasDirectDrag = isDirectDrag;
-            isPointerTracking = false;
-            isDirectDrag = false;
-            (sender as Microsoft.UI.Xaml.UIElement)?.ReleasePointerCaptures();
-            if (wasDirectDrag)
-            {
-                RestoreDragOrigins();
-                QueuePositionUpdate(TaskbarChangeReason.None);
-            }
-            EndUserRepositioning();
-        }
-
-        private void StartDragPolling()
-        {
-            dragPollTimer ??= new Microsoft.UI.Xaml.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(16),
-            };
-            dragPollTimer.Tick -= DragPollTimer_Tick;
-            dragPollTimer.Tick += DragPollTimer_Tick;
-            dragPollTimer.Start();
-        }
-
-        private void StopDragPolling()
-        {
-            if (dragPollTimer is null)
-                return;
-            dragPollTimer.Stop();
-            dragPollTimer.Tick -= DragPollTimer_Tick;
-        }
-
-        private void DragPollTimer_Tick(object? sender, object e)
-        {
-            if (!isDragging && !isPointerTracking)
-            {
-                StopDragPolling();
-                return;
-            }
-
-            bool leftButtonDown = (User32.GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-            if (!leftButtonDown)
-            {
-                StopDragPolling();
-                if (isDragging)
-                {
-                    EndDragging(false);
-                    return;
-                }
-
-                FinishDirectDragFromPolling();
-                return;
-            }
-
-            if (!User32.GetCursorPos(out var point))
-                return;
-
-            if (isPointerTracking && !isDirectDrag)
-            {
-                if (Math.Abs(point.x - pressCursorPositionX) < Math.Ceiling(4 * dpiScale))
-                    return;
-                BeginDirectDrag();
-            }
-
-            // Pointer events and the polling timer used to solve and move the native window in parallel.
-            // Polling is now the single clock; skip an unchanged sample.
-            if (point.x == lastCursorPositionX)
-                return;
-
-            MoveWidgetWithCursor(point.x);
-        }
-
-        private void BeginDirectDrag()
-        {
-            isDirectDrag = true;
-            SuppressTileClicks();
-        }
-
-        private void FinishDirectDragFromPolling()
-        {
-            bool wasDirectDrag = isDirectDrag;
-            foreach (var tile in tiles)
-                tile?.ReleasePointerCaptures();
-
-            isPointerTracking = false;
-            isDirectDrag = false;
-            if (wasDirectDrag && DragAppWindow is not null)
-            {
-                _ = SnapToValidPositionAsync(dragPreviewX ?? DragAppWindow.Position.X);
-                SuppressTileClicks();
-            }
-            else
-            {
-                EndUserRepositioning();
-            }
-        }
-
-        private void BeginUserRepositioning()
-        {
-            if (userRepositioningRegistered)
-                return;
-
-            userRepositioningRegistered = true;
-            Interlocked.Increment(ref userRepositioningCount);
-        }
-
-        private void EndUserRepositioning()
-        {
-            if (!userRepositioningRegistered)
-                return;
-
-            userRepositioningRegistered = false;
-            Interlocked.Decrement(ref userRepositioningCount);
-        }
-
-        private void CaptureDragOrigins()
-        {
-            dragOriginX = DragCurrentOffsetX != int.MinValue
-                ? DragCurrentOffsetX
-                : DragAppWindow?.Position.X ?? 0;
-        }
-
-        private void RestoreDragOrigins()
-        {
-            appWindow?.Move(new PointInt32(dragOriginX, currentOffsetY));
-            currentOffsetX = dragOriginX;
-            dragPreviewX = null;
-            activeDragGap = null;
-        }
-
-        // A drag can cross tiles, so every tile swallows the click that ends it — otherwise releasing over
-        // a neighbour opens the flyout right after a reposition.
-        private void SuppressTileClicks()
-        {
-            foreach (var tile in tiles)
-            {
-                if (tile is not null)
-                    tile.SuppressNextClick = true;
-            }
-        }
-
-        /// <summary>
-        /// Drags the widget with the cursor inside whichever free gap the CURSOR currently occupies, so it
-        /// tracks the pointer smoothly across a whole zone and never overlaps a shell element.
-        ///
-        /// Selecting the gap by cursor position (rather than by distance to the widget, as before) is what
-        /// fixes issue #21: while the cursor crosses the centred icon cluster the widget simply waits,
-        /// pinned to the edge of the gap it is in, and picks up the pointer again the moment the cursor
-        /// enters the next gap. The old "nearest fitting gap" rule flipped between the left and right zones
-        /// mid-drag, which read as the widget jumping between lanes at random or refusing to move.
-        /// </summary>
-        private void MoveWidgetWithCursor(int cursorX)
-        {
-            var dragWindow = DragAppWindow;
-            if (dragWindow is null) return;
-            if (!TryGetLayoutRects(
-                    out RECT taskbarRect,
-                    out RECT notificationRect,
-                    out _,
-                    out bool hasNotificationArea))
-            {
-                return;
-            }
-            var taskbarClientRect = ToTaskbarClientRect(taskbarRect, taskbarRect);
-            var trayNotifyClientRect = ToTaskbarClientRect(notificationRect, taskbarRect);
-
-            var (leftBound, rightBound) = ComputeUsableHorizontalBounds(
-                taskbarClientRect,
-                hasNotificationArea ? trayNotifyClientRect : null,
-                TrayClearancePx,
-                IsRtlUI);
-            var obstacles = CollectObstacleClientRects(taskbarRect, lastWidgetsButtonClientRect, lastTaskButtonClientRects);
-            var gaps = ComputeFreeGaps(leftBound, rightBound, obstacles);
-
-            int cursorClientX = cursorX - taskbarRect.left;
-            int desiredX = cursorClientX - draggingInnerOffsetX;
-
-            var gap = SelectDragGap(gaps, cursorClientX, desiredX, DragWidth, activeDragGap);
-            // While the pointer crosses an obstacle, keep the widget in the gap it already occupies — the
-            // gap under the cursor may not fit it until the pointer fully clears the shell element.
-            if (gap is null && activeDragGap is { } rememberedGap
-                && rememberedGap.end - rememberedGap.start >= DragWidth)
-            {
-                gap = rememberedGap;
-            }
-            if (gap is not { } selectedZone)
-            {
-                // No gap can hold the widget at all (very crowded bar): leave it where it is.
-                LogDragState(cursorClientX, desiredX, leftBound, rightBound, gaps, obstacles, null, currentOffsetX);
-                lastCursorPositionX = cursorX;
-                return;
-            }
-
-            activeDragGap = selectedZone;
-            int targetX = Math.Clamp(desiredX, selectedZone.start, selectedZone.end - DragWidth);
-
-            LogDragState(cursorClientX, desiredX, leftBound, rightBound, gaps, obstacles, selectedZone, targetX);
-            dragWindow.Move(new PointInt32(targetX, currentOffsetY));
-            dragPreviewX = targetX;
-            ResyncGrabPoint(cursorClientX, targetX, desiredX);
-            lastCursorPositionX = cursorX;
-        }
-
-        /// <summary>
-        /// Records the drag solve whenever the picture changes (a different gap is tracked, or the gap set
-        /// itself changed). One line per change keeps the log small while still showing exactly which
-        /// obstacle pinned the widget — a drag that only moves one way looks identical to the user whether the
-        /// cause is a phantom obstacle, a bad grab offset, or clamped bounds.
-        ///
-        /// The gap set is compared by SHAPE, not by count: obstacles move and resize far more often than they
-        /// appear or disappear, so counting alone silently swallowed the changes most worth seeing.
-        /// </summary>
-        private void LogDragState(
-            int cursorClientX,
-            int desiredX,
-            int leftBound,
-            int rightBound,
-            List<(int start, int end)> gaps,
-            List<RECT> obstacles,
-            (int start, int end)? zone,
-            int targetX)
-        {
-            int gapHash = HashSpans(gaps);
-            if (zone == loggedDragZone && gapHash == loggedDragGapHash)
-                return;
-
-            loggedDragZone = zone;
-            loggedDragGapHash = gapHash;
-
-            // Built in one buffer rather than via ConvertAll + Join, which allocated two intermediate
-            // string lists per line on a path that runs inside a live drag.
-            var text = new StringBuilder(256);
-            text.Append("drag solve: cursor=").Append(cursorClientX)
-                .Append(" grab=").Append(draggingInnerOffsetX)
-                .Append(" desired=").Append(desiredX)
-                .Append(" width=").Append(DragWidth)
-                .Append(" bounds=[").Append(leftBound).Append(',').Append(rightBound).Append(')')
-                .Append(" zone=");
-            if (zone is { } z)
-                text.Append('[').Append(z.start).Append(',').Append(z.end).Append(')');
-            else
-                text.Append("none");
-            text.Append(" target=").Append(targetX).Append(" gaps=");
-            AppendSpans(text, gaps);
-            text.Append(" obstacles=");
-            AppendObstacles(text, obstacles);
-            Log.Debug(text.ToString());
-        }
-
-        private static int HashSpans(List<(int start, int end)> spans)
-        {
-            var hash = new HashCode();
-            foreach (var (start, end) in spans)
-            {
-                hash.Add(start);
-                hash.Add(end);
-            }
-            return hash.ToHashCode();
-        }
-
-        private static void AppendSpans(StringBuilder text, List<(int start, int end)> spans)
-        {
-            if (spans.Count == 0) { text.Append('-'); return; }
-            for (int i = 0; i < spans.Count; i++)
-            {
-                if (i > 0) text.Append(',');
-                text.Append('[').Append(spans[i].start).Append(',').Append(spans[i].end).Append(')');
-            }
-        }
-
-        private static void AppendObstacles(StringBuilder text, List<RECT> obstacles)
-        {
-            if (obstacles.Count == 0) { text.Append('-'); return; }
-            for (int i = 0; i < obstacles.Count; i++)
-            {
-                if (i > 0) text.Append(',');
-                text.Append('[').Append(obstacles[i].left).Append(',').Append(obstacles[i].right).Append(')');
-            }
-        }
-
-        /// <summary>
-        /// Re-anchors the grab point whenever the widget is pinned and the cursor has run past it (span end
-        /// or icon cluster). Without this the pointer builds up an invisible offset and the drag feels dead
-        /// until the hand travels all the way back.
-        ///
-        /// Awqat-Salaat solves the same problem by clamping the physical cursor with SetCursorPos, but that
-        /// traps the user's mouse — it cannot be moved past the taskbar end while a drag is held. Moving the
-        /// grab point instead keeps the pointer completely free and still responds the instant the user
-        /// reverses direction. The offset stays within the widget so the grab never leaves the control.
-        /// </summary>
-        private void ResyncGrabPoint(int cursorClientX, int targetX, int desiredX)
-        {
-            if (desiredX == targetX)
-                return;
-
-            draggingInnerOffsetX = Math.Clamp(cursorClientX - targetX, 0, DragWidth);
-        }
-
-        /// <summary>
-        /// Chooses the gap the dragged widget lives in for this pointer sample:
-        /// the gap under the cursor when it fits the widget; otherwise the gap the drag is already in
-        /// (so passing over an icon cluster doesn't teleport the widget); otherwise the nearest fitting gap.
-        /// Returns null when no gap can hold the widget.
-        /// </summary>
-        internal static (int start, int end)? SelectDragGap(
-            List<(int start, int end)> gaps, int cursorX, int desiredX, int width, (int start, int end)? current)
-        {
-            (int start, int end)? underCursor = null;
-            (int start, int end)? sticky = null;
-            (int start, int end)? directionalHandoff = null;
-            (int start, int end)? nearest = null;
-            long nearestDistance = long.MaxValue;
-
-            foreach (var gap in gaps)
-            {
-                if (gap.end - gap.start < width)
-                    continue;
-
-                if (cursorX >= gap.start && cursorX < gap.end)
-                    underCursor = gap;
-
-                // The current gap is matched by overlap, not equality: obstacle bounds shift by a pixel or
-                // two between samples as the shell relayouts, which would otherwise drop the sticky gap.
-                if (current is { } c && gap.start < c.end && gap.end > c.start)
-                    sticky = gap;
-
-                long distance = Math.Abs((long)Math.Clamp(desiredX, gap.start, gap.end - width) - desiredX);
-                if (distance < nearestDistance)
-                {
-                    nearestDistance = distance;
-                    nearest = gap;
-                }
-            }
-
-            // While the pointer crosses an occupied center, hand off at the midpoint between the current
-            // lane and the next lane in the direction of travel. This gives one predictable snap and then
-            // continuous tracking, instead of pinning the widget until the pointer reaches the far lane.
-            if (sticky is { } currentGap)
-            {
-                if (cursorX >= currentGap.end)
-                {
-                    var nextCandidates = gaps
-                        .Where(gap => gap.end - gap.start >= width && gap.start >= currentGap.end)
-                        .OrderBy(gap => gap.start);
-                    if (nextCandidates.Any())
-                    {
-                        var next = nextCandidates.First();
-                        if (cursorX > currentGap.end + (next.start - currentGap.end) / 2)
-                            directionalHandoff = next;
-                    }
-                }
-                else if (cursorX < currentGap.start)
-                {
-                    var previousCandidates = gaps
-                        .Where(gap => gap.end - gap.start >= width && gap.end <= currentGap.start)
-                        .OrderByDescending(gap => gap.end);
-                    if (previousCandidates.Any())
-                    {
-                        var previous = previousCandidates.First();
-                        if (cursorX < previous.end + (currentGap.start - previous.end) / 2)
-                            directionalHandoff = previous;
-                    }
-                }
-            }
-
-            return underCursor ?? directionalHandoff ?? sticky ?? nearest;
-        }
-
-        /// <summary>
-        /// Settles the widget after a drag: snaps the dropped position to the nearest gap that fully fits
-        /// it, so it rests beside shell elements instead of on top of them. Obstacle bounds are re-read
-        /// here (UIA, off the UI thread) rather than during the drag, which keeps the drag itself smooth.
-        /// Falls back to the pre-drag position when nothing fits.
-        /// </summary>
-        private async Task SnapToValidPositionAsync(int droppedX)
-        {
-            if (DragAppWindow is null)
-            {
-                EndUserRepositioning();
-                return;
-            }
-
-            isSettling = true;
-            try
-            {
-                if (!TryGetLayoutRects(
-                        out RECT taskbarScreenRect,
-                        out RECT notificationScreenRect,
-                        out _,
-                        out bool hasNotificationArea))
-                {
-                    return;
-                }
-                var taskbarRect = ToTaskbarClientRect(taskbarScreenRect, taskbarScreenRect);
-                var trayNotifyRect = ToTaskbarClientRect(notificationScreenRect, taskbarScreenRect);
-
-                await RefreshObstacleCacheAsync(taskbarScreenRect);
-
-                // A newer drag or press may have started while this settle was suspended on the UIA read
-                // above, and the widget may have been torn down. Either way this result is stale: letting
-                // it run would move the window, clear the new drag's dragPreviewX/activeDragGap, and
-                // persist a position the user has already dragged away from.
-                if (disposedValue || appWindow is null || !IsAlive || isDragging || isPointerTracking)
-                    return;
-
-                var obstacles = CollectObstacleClientRects(taskbarScreenRect, lastWidgetsButtonClientRect, lastTaskButtonClientRects);
-                var (leftBound, rightBound) = ComputeUsableHorizontalBounds(
-                    taskbarRect,
-                    hasNotificationArea ? trayNotifyRect : null,
-                    TrayClearancePx,
-                    IsRtlUI);
-                var gaps = ComputeFreeGaps(leftBound, rightBound, obstacles);
-
-                int settledX = PlaceInFittingGap(droppedX, gaps, DragWidth)
-                    ?? (DragCurrentOffsetX != int.MinValue
-                        ? DragCurrentOffsetX
-                        : ClampToSpan(droppedX, leftBound, rightBound, DragWidth));
-
-                DragAppWindow!.Move(new PointInt32(settledX, currentOffsetY));
-                currentOffsetX = settledX;
-                if (currentOffsetX != int.MinValue)
-                    SaveCustomPosition(currentOffsetX);
-                dragPreviewX = null;
-                activeDragGap = null;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Failed to settle widget after drag");
-            }
-            finally
-            {
-                isSettling = false;
-                if (!isDragging && !isPointerTracking && !isDirectDrag)
-                {
-                    EndUserRepositioning();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Re-reads the obstacle bounds only visible through UI Automation (the Win11 XAML app icons and
-        /// the Widgets/weather pill) into the caches the synchronous drag path reads. Called when a drag
-        /// starts and when it ends, so the gaps the drag tracks reflect the bar as it is right now.
-        /// </summary>
-        private async Task RefreshObstacleCacheAsync(RECT taskbarScreenRect)
-        {
-            if (SystemInfos.IsTaskBarWidgetsEnabled()
-                && await taskbarWatcher.GetWidgetsButtonRectAsync() is { } wb && wb.right > wb.left)
-            {
-                lastWidgetsButtonClientRect = ToTaskbarClientRect(wb, taskbarScreenRect);
-            }
-
-            if (await taskbarWatcher.GetTaskbarButtonRectsAsync() is { } taskButtonRects)
-            {
-                var converted = new List<RECT>(taskButtonRects.Count);
-                foreach (var r in taskButtonRects)
-                    converted.Add(ToTaskbarClientRect(r, taskbarScreenRect));
-                lastTaskButtonClientRects = converted;
-            }
-        }
-
-        private void PrimeObstacleCacheForDrag()
-        {
-            activeDragGap = null;
-            loggedDragZone = null;
-            loggedDragGapHash = 0;
-            User32.GetWindowRect(hwndShell, out RECT taskbarScreenRect);
-            _ = PrimeObstacleCacheAsync(taskbarScreenRect);
-        }
-
-        /// <summary>
-        /// Fire-and-forget wrapper for the drag-start cache prime. A UIA read can fail while Explorer is
-        /// rebuilding; without this the discarded task would surface an unobserved exception instead of a
-        /// warning, and the drag simply falls back to the previously cached obstacle bounds.
-        /// </summary>
-        private async Task PrimeObstacleCacheAsync(RECT taskbarScreenRect)
-        {
-            try
-            {
-                await RefreshObstacleCacheAsync(taskbarScreenRect);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Failed to prime the taskbar obstacle cache for a drag");
-            }
-        }
-
-        /// <summary>Keeps a widget of <paramref name="width"/> inside [leftBound, rightBound].</summary>
-        internal static int ClampToSpan(int desiredX, int leftBound, int rightBound, int width)
-        {
-            int maxX = rightBound - width;
-            return maxX <= leftBound ? leftBound : Math.Clamp(desiredX, leftBound, maxX);
-        }
-
         // Collects the taskbar-client rects of everything the widget must not overlap: the Start button and
         // search box (classic child windows), every taskbar button from the UIA scan (the Win11 XAML app
         // icons plus system buttons), the Widgets/weather pill, and any other injected sibling widgets. The
         // ReBarWindow32 container is excluded — it spans the whole item area and would leave no gaps.
-        // taskButtonClientRects is the cached UIA set so both the resting and drag paths use identical
-        // obstacles (issue #17).
+        // taskButtonClientRects is the cached UIA set used by every positioning pass (issue #17).
         private List<RECT> CollectObstacleClientRects(RECT taskbarScreenRect, RECT? widgetsPillClient, List<RECT> taskButtonClientRects)
         {
             var result = new List<RECT>();
@@ -1790,7 +899,7 @@ namespace CodexQuota.Taskbar
                 {
                     // Hidden siblings (a widget whose provider is off, or a host left over from an earlier
                     // taskbar rebuild) keep their last rect. Counting those as obstacles blocks a zone the
-                    // user can see is empty, so the widget refuses to be dragged into it.
+                    // user can see is empty, so the widget refuses to be placed into it.
                     if (!User32.IsWindowVisible(wnd))
                         continue;
                     if (User32.GetWindowRect(wnd, out var injectedBounds) && injectedBounds.right > injectedBounds.left)
@@ -1807,8 +916,8 @@ namespace CodexQuota.Taskbar
         /// Drops obstacle rects that do not sit in the taskbar band. Everything reaching the gap solver is in
         /// taskbar-client coords, so the band is [0, taskbarHeight); rects above it come from popups hosted in
         /// the taskbar's window/UIA tree (Widgets flyout, icon overflow, jump lists, tooltips). They span wide
-        /// horizontal ranges, and keeping them erases the free gaps under them — the widget then drags in one
-        /// direction only, or not at all.
+        /// horizontal ranges, and keeping them erases the free gaps under them — the widget then gets placed in
+        /// one direction only, or not at all.
         /// </summary>
         internal static List<RECT> FilterOffBandRects(List<RECT> rects, int taskbarHeight)
         {
@@ -2108,8 +1217,8 @@ namespace CodexQuota.Taskbar
             };
 
         // Carries per-pass options through the EnumChildWindows callback via its GCHandle lParam, so the
-        // scan is reentrancy-safe (UpdatePositionImpl runs on background threads while a drag runs on the
-        // UI thread) instead of relying on a shared field.
+        // scan is reentrancy-safe (UpdatePositionImpl can overlap taskbar event handling) instead of relying
+        // on a shared field.
         private sealed class BandEnumContext
         {
             public readonly List<RECT> List = new();
@@ -2140,7 +1249,7 @@ namespace CodexQuota.Taskbar
             if (isVolatileAppButton && !ctx.IncludeAppButtons)
                 return true;
             // ReBarWindow32 is the container spanning the whole item area — excluded for gap solving so it
-            // doesn't swallow every free gap; still included for the legacy forbidden-band callers.
+            // doesn't swallow every free gap.
             if (className == "ReBarWindow32" && ctx.ExcludeContainer)
                 return true;
             if (className is not ("Start" or "TrayDummySearchControl" or "ReBarWindow32" or "MSTaskSwWClass" or "MSTaskListWClass"))
@@ -2163,38 +1272,6 @@ namespace CodexQuota.Taskbar
             return true;
         }
 
-        private int LoadCustomPosition()
-        {
-            try
-            {
-                if (!File.Exists(positionPath))
-                    return -1;
-                if (!int.TryParse(File.ReadAllText(positionPath), NumberStyles.Integer, CultureInfo.InvariantCulture, out int offset))
-                    return -1;
-
-                // Zero is a valid left-edge position. It used to be treated as the default sentinel, which
-                // made a drag released at the far-left edge snap back to the right on the next refresh.
-                return offset;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Could not read widget position");
-                return -1;
-            }
-        }
-
-        private void SaveCustomPosition(int offset)
-        {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(positionPath)!);
-                File.WriteAllText(positionPath, offset.ToString(CultureInfo.InvariantCulture));
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Could not save widget position");
-            }
-        }
 
         private IntPtr CreateHostWindow(IntPtr parent)
         {
@@ -2298,8 +1375,6 @@ namespace CodexQuota.Taskbar
                 return;
 
             disposedValue = true;
-            StopDragPolling();
-            EndUserRepositioning();
             initialized = false;
             isVisible = false;
             positionUpdateCancellation.Cancel();
@@ -2310,11 +1385,7 @@ namespace CodexQuota.Taskbar
                     continue;
 
                 tile.Dispose();
-                tile.PointerPressed -= WidgetSummary_PointerPressed;
                 tile.DesiredHostWidthChanged -= WidgetSummary_DesiredHostWidthChanged;
-                tile.PointerMoved -= WidgetSummary_PointerMoved;
-                tile.PointerReleased -= WidgetSummary_PointerReleased;
-                tile.PointerCanceled -= WidgetSummary_PointerCanceled;
                 tile.Clicked -= OnTileClicked;
             }
             _ = CompleteDisposeAfterPositionUpdatesAsync();
@@ -2409,8 +1480,6 @@ namespace CodexQuota.Taskbar
             Array.Clear(tileProviders);
             Array.Clear(tileFits);
             Array.Clear(tileSuppressed);
-            lastTilePositions.Clear();
-            tilePositions.Clear();
             separatorBrush = null;
             separatorBrushIsLight = null;
         }

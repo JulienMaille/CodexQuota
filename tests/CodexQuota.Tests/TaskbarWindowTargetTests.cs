@@ -29,7 +29,6 @@ public class TaskbarWindowTargetTests
             new RECT { left = 2560, top = 0, right = 4480, bottom = 1080 });
 
         Assert.Equal("DISPLAY2", displayKey);
-        Assert.Equal("taskbar-widget-position-DISPLAY2.txt", TaskbarWindowTarget.BuildPositionFileName(displayKey));
     }
 
     [Fact]
@@ -40,6 +39,5 @@ public class TaskbarWindowTargetTests
             new RECT { left = -1920, top = 0, right = 0, bottom = 1080 });
 
         Assert.Equal("-1920_0_0_1080", displayKey);
-        Assert.Equal("taskbar-widget-position--1920_0_0_1080.txt", TaskbarWindowTarget.BuildPositionFileName(displayKey));
     }
 }

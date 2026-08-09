@@ -99,7 +99,7 @@ namespace CodexQuota.Usage
                     return $"{spent} / {(IsCredits ? "0" : "$0")} {suffix}";
                 return BudgetUsd is double budget
                     ? $"{spent} / {Amount(budget)} {suffix}"
-                    : $"{spent} / — {suffix}";
+                    : $"{spent} / · {suffix}";
             }
         }
 

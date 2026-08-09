@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace CodexQuota;
 
@@ -55,7 +56,7 @@ public static class ResetDateDisplay
     public static bool IsImminent(DateTimeOffset? resetAt, DateTimeOffset now)
         => resetAt is { } when && when > now && when - now <= ImminentWindow;
 
-    /// <summary>Short local date-time, e.g. "Aug 13 9:28 PM".</summary>
+    /// <summary>Short local date-time in the user's UI culture, e.g. "13 août 21:28".</summary>
     public static string FormatLocalDate(DateTimeOffset when)
-        => $"{when.ToLocalTime():MMM d h:mm tt}";
+        => when.ToLocalTime().ToString("d MMM HH:mm", CultureInfo.CurrentUICulture);
 }
