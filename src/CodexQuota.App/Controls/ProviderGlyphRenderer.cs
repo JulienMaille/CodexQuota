@@ -12,7 +12,11 @@ namespace CodexQuota.Controls
         private const double ViewportSize = 100;
         private const double NormalizedExtent = 88;
 
-        public static bool TryApply(Path path, ProviderId providerId, Brush foreground)
+        public static bool TryApply(
+            Path path,
+            ProviderId providerId,
+            Brush foreground,
+            bool normalizeToViewport = true)
         {
             if (!ProviderGlyphs.Data.TryGetValue(providerId, out var pathData)
                 || ParseGeometry(pathData) is not { } glyph)
@@ -22,7 +26,10 @@ namespace CodexQuota.Controls
 
             path.Data = glyph;
             path.Fill = foreground;
-            ApplyTransform(path);
+            if (normalizeToViewport)
+                ApplyTransform(path);
+            else
+                path.RenderTransform = null;
             return true;
         }
 

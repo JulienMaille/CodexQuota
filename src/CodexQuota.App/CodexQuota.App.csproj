@@ -34,12 +34,25 @@
     <Product>CodexQuota</Product>
     <AssemblyName>CodexQuota</AssemblyName>
     <ApplicationIcon>Assets\CodexQuota.ico</ApplicationIcon>
-    <Version>1.1.2</Version>
-    <AssemblyVersion>1.1.2.0</AssemblyVersion>
-    <FileVersion>1.1.2.0</FileVersion>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Explicit app string resources: the granular WindowsAppSDK packages define no default item
+         for .resw files, so without these includes the resw files never reach the PRI indexer and
+         the unpackaged build would ship without the app's localized strings. -->
+    <PRIResource Include="Strings\en-US\Resources.resw" />
+    <PRIResource Include="Strings\fr-FR\Resources.resw" />
+    <PRIResource Include="Strings\es-ES\Resources.resw" />
+    <PRIResource Include="Strings\de-DE\Resources.resw" />
+    <PRIResource Include="Strings\pt-BR\Resources.resw" />
+    <PRIResource Include="Strings\it-IT\Resources.resw" />
+    <PRIResource Include="Strings\ja-JP\Resources.resw" />
+    <PRIResource Include="Strings\ko-KR\Resources.resw" />
+    <PRIResource Include="Strings\zh-CN\Resources.resw" />
+    <PRIResource Include="Strings\ru-RU\Resources.resw" />
     <Content Include="Assets\CodexQuota.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -134,7 +147,8 @@
       <_PruneFiles Include="$(PublishDir)Microsoft.Web.WebView2.Core.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Web.WebView2.Core.Projection.dll" />
       <_PruneFiles Include="$(PublishDir)WebView2Loader.dll" />
-      <_PruneFiles Include="$(PublishDir)Microsoft.Windows.*.Projection.dll" Exclude="$(PublishDir)Microsoft.Windows.AppLifecycle.Projection.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.Windows.*.Projection.dll"
+                   Exclude="$(PublishDir)Microsoft.Windows.AppLifecycle.Projection.dll;$(PublishDir)Microsoft.Windows.ApplicationModel.Resources.Projection.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Windows.*.winmd" Exclude="$(PublishDir)Microsoft.Windows.AppLifecycle.winmd" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Foundation.winmd" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Security.Authentication.OAuth.Projection.dll" />

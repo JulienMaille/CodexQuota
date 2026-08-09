@@ -8,65 +8,6 @@
     mc:Ignorable="d">
 
     <StackPanel x:Name="Root" Spacing="10" MinWidth="300">
-        <StackPanel.Resources>
-            <!-- Compact header gear: a self-contained toggle whose checked state reads as "appearance
-                 options are showing" — a subtle fill behind the icon plus an accent icon tint, instead
-                 of the default ToggleButton chrome. -->
-            <Style x:Key="SettingsGearToggleStyle" TargetType="ToggleButton">
-                <Setter Property="Width" Value="32"/>
-                <Setter Property="Height" Value="32"/>
-                <Setter Property="MinWidth" Value="0"/>
-                <Setter Property="MinHeight" Value="0"/>
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="CornerRadius" Value="4"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ToggleButton">
-                            <Grid x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="Transparent"/>
-                                                <Setter Target="GearIcon.Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-                                                <Setter Target="GearIcon.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}"/>
-                                                <Setter Target="GearIcon.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                    <VisualStateGroup x:Name="CheckStates">
-                                        <VisualState x:Name="Checked">
-                                            <VisualState.Setters>
-                                                <Setter Target="Root.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-                                                <Setter Target="GearIcon.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Unchecked"/>
-                                        <VisualState x:Name="Indeterminate"/>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <FontIcon x:Name="GearIcon"
-                                          Glyph="&#xE713;"
-                                          FontSize="14"
-                                          Foreground="{TemplateBinding Foreground}"/>
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-        </StackPanel.Resources>
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -74,12 +15,13 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Viewbox x:Name="LogoBadge" Width="30" Height="30"
-                     HorizontalAlignment="Left" VerticalAlignment="Center">
-                <Canvas Width="100" Height="100">
-                    <Path x:Name="LogoPath"/>
-                </Canvas>
-            </Viewbox>
+            <Path x:Name="LogoPath"
+                  Width="30"
+                  Height="30"
+                  Stretch="Uniform"
+                  UseLayoutRounding="True"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Center"/>
 
             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -109,11 +51,14 @@
                         Padding="0"
                         BorderThickness="0"
                         Background="Transparent"
-                        Style="{StaticResource SettingsGearToggleStyle}"
-                        AutomationProperties.Name="Settings"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        CornerRadius="4"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
                         AutomationProperties.AutomationId="FlyoutSettingsButton"
-                        Click="SettingsButton_Click"
-                        ToolTipService.ToolTip="Show or hide appearance options"/>
+                        Click="SettingsButton_Click">
+                    <FontIcon Glyph="&#xE713;" FontSize="14"/>
+                </ToggleButton>
                 <Button x:Name="RefreshButton"
                         Width="32"
                         Height="32"
@@ -122,10 +67,8 @@
                         Padding="0"
                         BorderThickness="0"
                         Background="Transparent"
-                        AutomationProperties.Name="Refresh usage"
                         AutomationProperties.AutomationId="FlyoutRefreshButton"
-                        Click="RefreshButton_Click"
-                        ToolTipService.ToolTip="Refresh usage">
+                        Click="RefreshButton_Click">
                     <FontIcon Glyph="&#xE72C;"
                               FontSize="14"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -138,10 +81,8 @@
                         Padding="0"
                         BorderThickness="0"
                         Background="Transparent"
-                        AutomationProperties.Name="Close"
                         AutomationProperties.AutomationId="FlyoutCloseButton"
-                        Click="CloseButton_Click"
-                        ToolTipService.ToolTip="Close">
+                        Click="CloseButton_Click">
                     <FontIcon Glyph="&#xE711;"
                               FontSize="14"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -155,7 +96,7 @@
                     Spacing="4"
                     Visibility="Collapsed">
             <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="Token activity"
+                <TextBlock x:Name="TokenActivityText"
                            Style="{StaticResource BodyTextBlockStyle}"/>
                 <TextBlock x:Name="ProfileAsOfText"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"

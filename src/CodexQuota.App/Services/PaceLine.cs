@@ -1,119 +1,128 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using CodexQuota.Usage;
 
 namespace CodexQuota;
 
-/// <summary>Result of a pace projection: the one-line label plus the fraction of the remaining
-/// week the current burn rate would exhaust, for the shared urgency-brush mapping.</summary>
-public sealed record PaceLineResult(string Label, double RemainingPercent);
+/// <summary>Result of a pace projection. The English label is retained for culture-independent
+/// tests and diagnostics; the UI uses the semantic fields to render the selected language.</summary>
+public sealed record PaceLineResult(
+    string Label,
+    double RemainingPercent,
+    double RatePercentPerDay,
+    bool CapReached,
+    bool WillExhaustBeforeReset,
+    double DaysToCap,
+    DateTimeOffset ResetAt,
+    DateTimeOffset? CapAt);
 
 /// <summary>
 /// Projects the weekly quota's exhaustion date from the rate window's used-percent trajectory and
-/// the profile's daily token buckets, and renders the one-glance "where are we going" line for the
-/// flyout (design: docs/pace-eta-line.md).
+/// renders the one-glance "where are we going" line for the flyout (design: docs/pace-eta-line.md).
 ///
-/// Burning faster than the week's allowance makes "resets in Nd" misleading — at current pace the
-/// cap is hit in 2 days, not 7. The line states exactly that: "Pace ~5.2k tok/day → cap Wed".
-/// No notifications, no settings, no charts; hidden whenever any input is missing.
+/// Burning faster than the week's allowance makes "resets in Nd" misleading - at current pace the
+/// cap is hit in 2 days, not 7. The line states exactly that: "Pace ~42% quota/day -> cap Wed".
+/// No notifications or charts; hidden whenever any input is missing.
 ///
 /// Math (all from data this app already fetches):
 ///   - used-percent slope: the weekly window reports {@link RateWindow.UsedPercent} used after
-///     (now - windowStart) elapsed in a window of {@link RateWindow.WindowMinutes} minutes, so
-///     the pace is a straight line to 100%: daysToCap = (100-used)*elapsed/used. The projection
-///     only becomes a warning when actual usage is more than two percentage points ahead of the
-///     ideal elapsed-time usage; this keeps a small first sample from dominating the estimate.
-///   - the "tok/day" number comes from the profile's daily buckets (mean of the last ≤ 7).
+///     (now - windowStart) elapsed in a window of {@link RateWindow.WindowMinutes} minutes. Each
+///     24-hour quota day contributes at most the configured workday hours, so idle hours do not
+///     inflate the daily rate. The pace is a straight line to 100%: daysToCap =
+///     (100-used)*elapsedWorkdays/used. The projection only becomes a warning when actual usage is
+///     more than two percentage points ahead of ideal workday usage; this keeps a small first sample
+///     from dominating the estimate.
+///   - the displayed rate is the same quota slope, expressed as percentage points of quota per
+///     assumed workday.
 ///   - only a materially-ahead pace that exhausts before reset folds into the configured 50/20
 ///     thresholds via {@link QuotaDisplay.BrushKeyForRemaining}; all other live pace is neutral.
 ///
-/// Hide (null) when: fewer than 2 closed profile days, a ~0 token/day mean, no weekly window /
-/// reset boundary, a window that has not started, or nothing used yet.
+/// Hide (null) when: no weekly window / reset boundary, a window that has not started, or nothing
+/// used yet.
 /// </summary>
 public static class PaceLine
 {
-    /// <summary>How many closed profile days (newest last) feed the daily rate.</summary>
-    public const int RateWindowDays = 7;
-
     /// <summary>Ignore small positive deviations from the ideal time-based pace.</summary>
     public const double OnTrackDeltaPercent = 2;
 
-    /// <summary>Below this mean daily burn the line reads "nothing to say" and hides.</summary>
-    public const double MinimumDailyTokens = 10;
-
     public static PaceLineResult? Compute(
-        IReadOnlyList<ProfileUsageBucket> dailyBuckets,  // newest last
         double weeklyUsedPercent,                        // 0..100, from the weekly RateWindow
         DateTimeOffset? weeklyResetAt,                   // weekly RateWindow.ResetAt
         int weeklyWindowMinutes,                         // weekly RateWindow.WindowMinutes
-        DateTimeOffset now)
+        DateTimeOffset now,
+        int workdayHours = PaceSettings.DefaultWorkdayHours)
     {
         if (weeklyResetAt is not { } resetAt || resetAt <= now)
             return null;
         if (weeklyUsedPercent <= 0)
             return null;
 
-        double spanDays = weeklyWindowMinutes > 0 ? weeklyWindowMinutes / 1440.0 : 7.0 * 24 * 60 / 1440.0;
+        workdayHours = Math.Clamp(workdayHours, 1, 24);
+        double spanDays = weeklyWindowMinutes > 0 ? weeklyWindowMinutes / 1440.0 : 7.0;
         var windowStart = resetAt.AddDays(-spanDays);
         double elapsedDays = (now - windowStart).TotalDays;
         if (elapsedDays <= 1e-9)
             return null;
 
+        double elapsedWorkdays = WorkdaysElapsed(elapsedDays, workdayHours);
+        if (elapsedWorkdays <= 1e-9)
+            return null;
+
         double used = Math.Clamp(weeklyUsedPercent, 0, 100);
-        double expectedUsed = Math.Clamp(elapsedDays / spanDays * 100, 0, 100);
+        double expectedUsed = Math.Clamp(elapsedWorkdays / spanDays * 100, 0, 100);
         bool materiallyAhead = used - expectedUsed > OnTrackDeltaPercent;
-        double burnPerDay = used / elapsedDays;
+        double burnPerDay = used / elapsedWorkdays;
         double daysToCap = (100 - used) / burnPerDay;
 
         bool burned = used >= 100 || daysToCap <= 0;
         double daysToReset = (resetAt - now).TotalDays;
+        bool willExhaustBeforeReset = !burned && materiallyAhead && daysToCap < daysToReset;
+        DateTimeOffset? capAt = willExhaustBeforeReset ? now.AddDays(daysToCap) : null;
         double remaining = burned
             ? 0
-            : materiallyAhead && daysToCap < daysToReset
+            : willExhaustBeforeReset
                 ? Math.Min(100, daysToCap / Math.Max(1, daysToReset) * 100)
                 : 100;
 
-        // The daily rate comes from the profile buckets; the label is as-if meaningful only when
-        // there is a real burn behind it.
-        long? rate = DailyRate(dailyBuckets);
-        if (rate is not { } rateTokens || rateTokens < MinimumDailyTokens)
-            return null;
-
-        string rateLabel = FormatTokens(rateTokens);
+        string rateLabel = FormatQuotaRate(burnPerDay);
         string label;
         if (burned)
-            label = $"Pace — cap reached · resets {DayName(resetAt)}";
-        else if (materiallyAhead && daysToCap < daysToReset)
-            label = $"Pace ~{rateLabel} tok/day → cap {DayName(now.AddDays(daysToCap))} (~{daysToCap:0.#}d)";
+            label = $"Pace · cap reached · resets {DayName(resetAt)}";
+        else if (willExhaustBeforeReset)
+            label = $"Pace ~{rateLabel}% quota/day → cap {DayName(capAt!.Value)} (~{daysToCap.ToString("0.#", CultureInfo.InvariantCulture)}d)";
         else
-            label = $"Pace ~{rateLabel} tok/day — resets before cap";
+            label = $"Pace ~{rateLabel}% quota/day · resets before cap";
 
-        return new PaceLineResult(label, remaining);
-    }
-
-    /// <summary>Mean tokens/day over the last ≤7 closed buckets, or null when fewer than 2.</summary>
-    private static long? DailyRate(IReadOnlyList<ProfileUsageBucket> buckets)
-    {
-        if (buckets.Count < 2)
-            return null;
-
-        int take = Math.Min(RateWindowDays, buckets.Count);
-        long sum = 0;
-        for (int i = buckets.Count - take; i < buckets.Count; i++)
-            sum += Math.Max(0, buckets[i].Tokens);
-        return (long)Math.Round(sum / (double)take);
+        return new PaceLineResult(
+            label,
+            remaining,
+            burnPerDay,
+            burned,
+            willExhaustBeforeReset,
+            daysToCap,
+            resetAt,
+            capAt);
     }
 
     private static string DayName(DateTimeOffset when)
-        => when.ToLocalTime().ToString("ddd", CultureInfo.InvariantCulture);
+        => when.ToLocalTime().ToString("dddd", CultureInfo.InvariantCulture);
 
-    private static string FormatTokens(long tokens)
+    /// <summary>
+    /// Counts one assumed workday per 24-hour quota day. The current partial day contributes its
+    /// elapsed hours divided by the configured workday, capped at one workday.
+    /// </summary>
+    private static double WorkdaysElapsed(double elapsedDays, int workdayHours)
     {
-        if (tokens >= 10_000)
-            return (tokens / 1000.0).ToString("0", CultureInfo.InvariantCulture) + "k";
-        if (tokens >= 1_000)
-            return (tokens / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k";
-        return tokens.ToString(CultureInfo.InvariantCulture);
+        double fullDays = Math.Floor(elapsedDays);
+        double partialDayHours = (elapsedDays - fullDays) * 24;
+        return fullDays + Math.Min(1, partialDayHours / workdayHours);
+    }
+
+    internal static string FormatQuotaRate(double percentPerDay)
+    {
+        if (percentPerDay >= 10)
+            return percentPerDay.ToString("0", CultureInfo.InvariantCulture);
+        if (percentPerDay >= 1)
+            return percentPerDay.ToString("0.0", CultureInfo.InvariantCulture);
+        return percentPerDay.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }

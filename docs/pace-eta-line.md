@@ -1,127 +1,83 @@
 # Design: simple pace-ETA line in the flyout
 
-Status: implemented (simple version) — single flyout line, no notifications, no settings.
-Area: `CodexUsagePanel` (flyout body) · new `PaceLine` helper
+Status: implemented - single flyout line, no notifications, configurable workday assumption.
+Area: `CodexUsagePanel` (flyout body) · `PaceLine` helper
 
 ## Problem
 
 The flyout tells the user where they stand (`Weekly · 100% · resets in 6d 23h`) but not
-*where they are going*. Burning tokens faster than the week's allowance supports a "resets in
-6d 23h" that is misleading: at current pace the cap is hit in 3 days, not 7. The user needs one
+*where they are going*. Burning faster than the week's allowance makes a reset countdown
+misleading: at the current pace the cap may be hit before the window resets. The user needs one
 glanceable signal: **at the current pace, when does the weekly quota give out?**
 
 ## Goal
 
-A single compact line under the weekly meter, visible only when the data supports it:
+A single compact line under the weekly meter, visible when the weekly window has enough data:
 
-> Pace: ~5.2k tokens/day → cap by **Wed** · ~3.1 days left
+> Pace ~1.4% quota/day → cap Wed (~3.1d)
 
-and a one-word urgency tint when the pace threatens the reset:
+The rate is expressed as percentage points of the weekly quota per day. This is independent of the
+model mix and does not pretend that the service exposes a raw token cap.
 
-- `ok` — projected depletion after the next reset → "resets before you exhaust it"
-- `tight` — depletion lands between 3d and today → short warning color
-- `burned` — projected depletion ends before the reset boundary; render "pace: too hot" style.
+No charts or second axis. If the weekly window is unavailable, the line hides rather than guessing.
 
-No charts, no second axis, no settings. If any input is missing, the line hides (never guesses).
-
-## Data sources (already in code)
+## Data sources
 
 | Input | Type | Where |
 |---|---|---|
-| Weekly remaining | quota → remaining tokens | `UsageResult` via `QuotaDisplay.RemainingPercent` |
-| Daily token burn | `ProfileUsageBucket[]` (`StartDate`, `Tokens`) | `CodexProfileSnapshot.DailyUsageBuckets` (Profile endpoint) |
-| Reset boundary | reset timestamp | `UsageResult.Reset` (countdown row) |
+| Weekly used percentage | `used_percent` / `usage_percent` | `/wham/usage` weekly `RateWindow` |
+| Window duration | `limit_window_seconds` | `/wham/usage` weekly `RateWindow` |
+| Reset boundary | `reset_at` | `/wham/usage` weekly `RateWindow` |
 
-Notes already documented on `CodexProfileSnapshot`: the Profile endpoint lags and may **omit the
-current day**. The app supplements that bucket from local Codex session journals when available.
+The Profile endpoint and local Codex session journals still power the activity heatmap and live
+current-day token counter. They are intentionally not inputs to the pace projection because they do
+not identify or weight Luna/Sol and other model families consistently with the server quota.
 
-## Algorithm (keep it simple)
+## Algorithm
 
-1. **Daily burn rate** = mean of the last N closed profile days, N = `min(7, buckets.Count)`.
-   Skipped days (StartDate increments missing) are counted as 0-burn days — a rest day lowers the
-   mean instead of being dropped, which is the honest reading of "pace".
-2. **Current-day gap**: the profile may omit today's tokens. Add today's locally observed token
-   count from Codex session journals when the server bucket is missing or lower; historical server
-   buckets remain authoritative.
-3. **Burn-adjusted days left** `=` remainingTokens / dailyRate.
-4. **Cap date** = `now + daysLeft` (calendar day, e.g. `Wed`).
-   - if `cap ≤ reset`: `tight`/`burned` when `reset - cap ≤ 2d` / `cap == now`
-   - else `ok`.
-5. **Render** (single TextBlock, secondary brush):
+1. **Elapsed window** = `now - (resetAt - windowDuration)`.
+2. **Elapsed workdays** = full 24-hour quota days plus the current partial day divided by the
+   configured workday hours, capped at one workday.
+3. **Quota rate** = `usedPercent / elapsedWorkdays`, expressed as percentage points per assumed
+   workday. The default workday is 8 hours.
+4. **Days to cap** = `(100 - usedPercent) / quotaRate`.
+5. Compare actual usage with ideal elapsed-workday usage. A deviation of up to two percentage points is
+   treated as on track, so a small first sample after reset does not produce a false runout warning.
+6. **Cap date** = `now + daysToCap` only when a materially-ahead pace exhausts before reset; otherwise
+   render `resets before cap`.
+7. Feed `daysToCap / daysToReset` through the existing `QuotaDisplay.BrushKeyForRemaining` mapping
+   for the warning tint. Non-warning pace is clamped to 100% (neutral).
 
-```
-pace ≈ {rate:0.#}k tok/day → cap ~{date} {+ countdown}{state chip}
-```
+### Formatting and edge cases
 
-`rate` formatting: `≥10k → "10k"`, `≥1k → "5.2k"`, `95 → "950"`, `<10 tokens/day → line hidden`.
-
-### Edge cases
-
-- insufficient history (`buckets < 2` days, or no quota/remaining): hide the line.
-- rate ≈ 0 (quota flat): hide (nothing to say).
-- negative daysLeft (already over? cap): show `cap NOW` in critical color.
-- Profile lag: burn only counts closed days + the in-flight delta — no double counting.
+- `≥10` percentage points/day → whole number (`12% quota/day`).
+- `≥1` percentage point/day → one decimal (`1.4% quota/day`).
+- `<1` percentage point/day → up to two decimals (`0.14% quota/day`).
+- No reset, a reset in the past, a window that has not started, or zero usage → hide the line.
+- A fully used window → `cap reached` with critical color.
 
 ## Where it renders
 
-- `CodexUsagePanel` — new 1-row grid under the weekly meter row, `Visibility` toggled by the
-  formatter's result (Hidden when inputs incomplete). Not in the widget tile (too narrow) — the
-  tile already gets the percentile + color; the pace line is a flyout-only detail.
-- Font: `CaptionTextBlockStyle`; color: built from `QuotaDisplay.BrushKeyForRemaining(daysLeft/maxDays)
-  ` so the caution/critical brush flow is reused unchanged.
+- `CodexUsagePanel` — one caption line under the weekly meter.
+- Not in the taskbar tile, which is too narrow and already has the quota percentage/color.
+- The line is recomputed whenever a usage result is rendered; it does not wait for profile data.
 
-## Implementation sketch (as shipped)
+## Implementation
 
 ```csharp
-// src/CodexQuota.App/Services/PaceLine.cs
-public sealed record PaceLineResult(string Label, double RemainingPercent);
-public static class PaceLine
-{
-    // Inputs already available at publish time; pure function => fully unit-testable.
-    // weeklyUsedPercent / weeklyResetAt / weeklyWindowMinutes come from the weekly RateWindow
-    // (the API reports used-percent, not raw remaining tokens — see adaptation below).
-    public static PaceLineResult? Compute(
-        IReadOnlyList<ProfileUsageBucket> dailyBuckets,   // newest last
-        double weeklyUsedPercent,
-        DateTimeOffset? weeklyResetAt,
-        int weeklyWindowMinutes,
-        DateTimeOffset now)
-}
+public static PaceLineResult? Compute(
+    double weeklyUsedPercent,
+    DateTimeOffset? weeklyResetAt,
+    int weeklyWindowMinutes,
+    DateTimeOffset now,
+    int workdayHours = 8)
 ```
 
-- Pure by construction — same inputs, same line; no timers, no service state.
-- Recompute on every publish (the coordinator already re-publishes after each fetch) — no new
-  cadence, no coordination changes.
-
-### Adaptation from this design (locked in code + tests)
-
-- The usage API exposes only `used_percent` + `limit_window_seconds` + `reset_at` for the weekly
-  window — no token cap, so "remainingTokens" does not exist in `RateWindow`. The projection is
-  computed on the used-percent slope instead: `daysToCap = (100 - used) * elapsed / used`, with
-  `elapsed = now - (resetAt - windowMinutes)`. The bucket mean supplies the human "~5.2k tok/day"
-  label only.
-- Before presenting that projection as a warning, compare `used` with the ideal elapsed-time
-  percentage (`elapsed / windowMinutes * 100`). A deviation of up to two percentage points is
-  treated as on track, matching Win-CodexBar's pace stages; in that band the line stays neutral
-  and says the quota resets before the projected cap. This prevents a 1% first sample shortly
-  after reset from extrapolating into a false runout warning.
-- `RemainingPercent` (output) = `daysToCap / daysToReset` only for a materially-ahead pace that
-  exhausts before reset; otherwise it is 100, fed into the existing
-  `QuotaDisplay.BrushKeyForRemaining` so the configured 50/20 thresholds color the warning line.
-- Bucket dates are not parsed; only their count and token values matter (≤ 7 newest buckets).
-  Rest days are literal 0-token buckets in the feed, so they lower the mean naturally.
+The function is pure and unit-testable. The weekly `RateWindow` is the only usage input; workday hours
+is the user-configured assumption.
 
 ## Tests
 
-`PaceLineTests` (xUnit, mirrors `QuotaDisplayTests` style):
-table-driven cases — steady burn → expected cap date; zero/one-day history → null (hidden);
-over-quota today → "cap reached" + 0%; profile lag gap counted correctly; only the last 7 buckets
-feed the rate; rest days lower the mean; 5.2k / 10k / 950 rate formatting.
-
-## Open question (answered in code)
-
-Color grammar: **RemainingPercent** = daysToCap / daysToReset maps through
-`QuotaDisplay.BrushKeyForRemaining` — the pace line folds into the configured `Warn below %`
-thresholds (default 50/20), consistent with the existing "urgency color" language in the
-tile/flyout. A pace that exhausts the cap before the reset reads ≤ 100% and colors amber/red by
-the user's thresholds; a pace that resets first clamps at 100% (default text color).
+`PaceLineTests` covers steady burn, slow burn, a fully used window, missing/past reset boundaries,
+zero usage, the small-first-sample guard, percentage-points-per-day formatting, and the fact that
+profile token history is not required.

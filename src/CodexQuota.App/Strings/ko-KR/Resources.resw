@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Ui.Settings" xml:space="preserve"><value>설정</value></data>
+  <data name="Ui.ShowHideAppearanceOptions" xml:space="preserve"><value>모양 옵션 표시 또는 숨기기</value></data>
+  <data name="Ui.RefreshUsage" xml:space="preserve"><value>사용량 새로 고침</value></data>
+  <data name="Ui.Close" xml:space="preserve"><value>닫기</value></data>
+  <data name="Ui.TokenActivity" xml:space="preserve"><value>토큰 사용량</value></data>
+  <data name="Ui.Refreshing" xml:space="preserve"><value>새로 고치는 중…</value></data>
+  <data name="Ui.NoUsageDataYet" xml:space="preserve"><value>아직 사용 데이터가 없습니다.</value></data>
+  <data name="Ui.LastUpdatedDash" xml:space="preserve"><value>마지막 업데이트 ·</value></data>
+  <data name="Ui.UsageUnavailable" xml:space="preserve"><value>사용량을 사용할 수 없음</value></data>
+  <data name="Ui.ProfileAsOf" xml:space="preserve"><value>{0} 기준</value></data>
+  <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>{0} 기준 · 로컬 세션</value></data>
+  <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>로컬 세션</value></data>
+  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} 토큰</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>{0}에 재설정</value></data>
+  <data name="Ui.ResetsIn" xml:space="preserve"><value>{0} 후 재설정</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0}개의 리셋 크레딧</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>가장 오래된 항목 {0}에 만료</value></data>
+  <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>가장 오래된 항목 {0} 후 만료</value></data>
+  <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>마지막 업데이트 {0}</value></data>
+  <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>마지막 업데이트 {0} (오래됨)</value></data>
+  <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 새로 고치는 중…</value></data>
+  <data name="Ui.AppearanceIcon" xml:space="preserve"><value>아이콘</value></data>
+  <data name="Ui.AppearanceBars" xml:space="preserve"><value>막대</value></data>
+  <data name="Ui.AppearanceColorPercent" xml:space="preserve"><value>색상 %</value></data>
+  <data name="Ui.WarnBelowPercent" xml:space="preserve"><value>% 미만에서 경고</value></data>
+  <data name="Ui.WorkdayHours" xml:space="preserve"><value>작업 시간</value></data>
+  <data name="Ui.ShowBadgeTooltip" xml:space="preserve"><value>작업 표시줄 타일에 Codex 배지 표시</value></data>
+  <data name="Ui.ShowBarsTooltip" xml:space="preserve"><value>작업 표시줄 타일에 진행률 표시줄 표시; 백분율은 항상 표시</value></data>
+  <data name="Ui.ShowColorTooltip" xml:space="preserve"><value>남은 백분율 색상 지정: 50% 이하는 주황색, 20% 이하는 빨간색</value></data>
+  <data name="Ui.CautionTooltip" xml:space="preserve"><value>남은 백분율이 이 값 미만이면 주의</value></data>
+  <data name="Ui.CriticalTooltip" xml:space="preserve"><value>남은 백분율이 이 값 미만이면 위험</value></data>
+  <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>24시간 할당량 기준 하루 동안 가정하는 코딩 시간</value></data>
+  <data name="Labels.Session" xml:space="preserve"><value>세션</value></data>
+  <data name="Labels.Weekly" xml:space="preserve"><value>주간</value></data>
+  <data name="Labels.Monthly" xml:space="preserve"><value>월간</value></data>
+  <data name="Labels.CodeReview" xml:space="preserve"><value>코드 검토</value></data>
+  <data name="Labels.Credits" xml:space="preserve"><value>크레딧</value></data>
+  <data name="Labels.Resets" xml:space="preserve"><value>재설정</value></data>
+  <data name="Labels.Usage" xml:space="preserve"><value>사용량</value></data>
+  <data name="Labels.Model" xml:space="preserve"><value>모델</value></data>
+  <data name="Labels.SparkSession" xml:space="preserve"><value>Spark 세션</value></data>
+  <data name="Labels.SparkWeekly" xml:space="preserve"><value>Spark 주간</value></data>
+  <data name="Labels.Total" xml:space="preserve"><value>합계</value></data>
+  <data name="Labels.AutoComposer" xml:space="preserve"><value>Auto+Composer</value></data>
+  <data name="Labels.Api" xml:space="preserve"><value>API</value></data>
+  <data name="Plan.Guest" xml:space="preserve"><value>게스트</value></data>
+  <data name="Plan.Free" xml:space="preserve"><value>무료</value></data>
+  <data name="Plan.Business" xml:space="preserve"><value>Business</value></data>
+  <data name="Plan.Enterprise" xml:space="preserve"><value>Enterprise</value></data>
+  <data name="Plan.Education" xml:space="preserve"><value>교육</value></data>
+  <data name="Time.Now" xml:space="preserve"><value>지금</value></data>
+  <data name="Time.Day" xml:space="preserve"><value>일</value></data>
+  <data name="Time.Hour" xml:space="preserve"><value>시간</value></data>
+  <data name="Time.Minute" xml:space="preserve"><value>분</value></data>
+  <data name="Time.UnitSeparator" xml:space="preserve"><value> </value></data>
+  <data name="Widget.Loading" xml:space="preserve"><value>로드 중…</value></data>
+  <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>활성 공급자 로드 중…</value></data>
+  <data name="Widget.Unavailable" xml:space="preserve"><value>사용할 수 없음</value></data>
+  <data name="Widget.Unknown" xml:space="preserve"><value>알 수 없음</value></data>
+  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>리셋 크레딧: {0}개 사용 가능</value></data>
+  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>리셋 {0}: {1}에 부여, {2}에 만료</value></data>
+  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0}개의 추가 리셋 크레딧</value></data>
+  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>마지막 업데이트 {0} · 새로 고치는 중…</value></data>
+  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>가장 오래된 항목 {0}에 만료</value></data>
+  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>가장 오래된 항목 지금 만료</value></data>
+  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>가장 오래된 항목 {0} 후 만료</value></data>
+  <data name="Widget.ResetsOn" xml:space="preserve"><value>{0}에 재설정</value></data>
+  <data name="Widget.ResetsNow" xml:space="preserve"><value>지금 재설정</value></data>
+  <data name="Widget.ResetsIn" xml:space="preserve"><value>{0} 후 재설정</value></data>
+  <data name="Pace.CapReached" xml:space="preserve"><value>페이스 · 한도 도달 · {0}에 재설정</value></data>
+  <data name="Pace.CapBeforeReset" xml:space="preserve"><value>페이스 ~{0}% 할당량/일 → 한도 {1} (~{2:0.#}일)</value></data>
+  <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>페이스 ~{0}% 할당량/일 · 한도 도달 전에 재설정</value></data>
+</root>
