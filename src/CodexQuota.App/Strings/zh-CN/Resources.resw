@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Ui.Settings" xml:space="preserve"><value>设置</value></data>
+  <data name="Ui.ShowHideAppearanceOptions" xml:space="preserve"><value>显示或隐藏外观选项</value></data>
+  <data name="Ui.RefreshUsage" xml:space="preserve"><value>刷新用量</value></data>
+  <data name="Ui.Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Ui.TokenActivity" xml:space="preserve"><value>令牌用量</value></data>
+  <data name="Ui.Refreshing" xml:space="preserve"><value>正在刷新…</value></data>
+  <data name="Ui.NoUsageDataYet" xml:space="preserve"><value>暂无使用数据。</value></data>
+  <data name="Ui.LastUpdatedDash" xml:space="preserve"><value>最后更新 ·</value></data>
+  <data name="Ui.UsageUnavailable" xml:space="preserve"><value>用量不可用</value></data>
+  <data name="Ui.ProfileAsOf" xml:space="preserve"><value>截至 {0}</value></data>
+  <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>截至 {0} · 本地会话</value></data>
+  <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>本地会话</value></data>
+  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} 个令牌</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>于 {0} 重置</value></data>
+  <data name="Ui.ResetsIn" xml:space="preserve"><value>{0} 后重置</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} 个重置额度</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
+  <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
+  <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>最后更新 {0}</value></data>
+  <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>最后更新 {0}（数据已过期）</value></data>
+  <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 正在刷新…</value></data>
+  <data name="Ui.AppearanceIcon" xml:space="preserve"><value>图标</value></data>
+  <data name="Ui.AppearanceBars" xml:space="preserve"><value>条形</value></data>
+  <data name="Ui.AppearanceColorPercent" xml:space="preserve"><value>颜色 %</value></data>
+  <data name="Ui.WarnBelowPercent" xml:space="preserve"><value>低于 % 时提醒</value></data>
+  <data name="Ui.WorkdayHours" xml:space="preserve"><value>工作时长</value></data>
+  <data name="Ui.ShowBadgeTooltip" xml:space="preserve"><value>在任务栏磁贴中显示 Codex 徽章</value></data>
+  <data name="Ui.ShowBarsTooltip" xml:space="preserve"><value>在任务栏磁贴中显示进度条；百分比始终显示</value></data>
+  <data name="Ui.ShowColorTooltip" xml:space="preserve"><value>为剩余百分比着色：不高于 50% 时为橙色，不高于 20% 时为红色</value></data>
+  <data name="Ui.CautionTooltip" xml:space="preserve"><value>剩余百分比低于此值时提醒</value></data>
+  <data name="Ui.CriticalTooltip" xml:space="preserve"><value>剩余百分比低于此值时标记为严重</value></data>
+  <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>每个 24 小时配额日的预计编码小时数</value></data>
+  <data name="Labels.Session" xml:space="preserve"><value>会话</value></data>
+  <data name="Labels.Weekly" xml:space="preserve"><value>每周</value></data>
+  <data name="Labels.Monthly" xml:space="preserve"><value>每月</value></data>
+  <data name="Labels.CodeReview" xml:space="preserve"><value>代码审查</value></data>
+  <data name="Labels.Credits" xml:space="preserve"><value>额度</value></data>
+  <data name="Labels.Resets" xml:space="preserve"><value>重置</value></data>
+  <data name="Labels.Usage" xml:space="preserve"><value>用量</value></data>
+  <data name="Labels.Model" xml:space="preserve"><value>模型</value></data>
+  <data name="Labels.SparkSession" xml:space="preserve"><value>Spark 会话</value></data>
+  <data name="Labels.SparkWeekly" xml:space="preserve"><value>Spark 每周</value></data>
+  <data name="Labels.Total" xml:space="preserve"><value>总计</value></data>
+  <data name="Labels.AutoComposer" xml:space="preserve"><value>Auto+Composer</value></data>
+  <data name="Labels.Api" xml:space="preserve"><value>API</value></data>
+  <data name="Plan.Guest" xml:space="preserve"><value>访客</value></data>
+  <data name="Plan.Free" xml:space="preserve"><value>免费</value></data>
+  <data name="Plan.Business" xml:space="preserve"><value>Business</value></data>
+  <data name="Plan.Enterprise" xml:space="preserve"><value>Enterprise</value></data>
+  <data name="Plan.Education" xml:space="preserve"><value>教育</value></data>
+  <data name="Time.Now" xml:space="preserve"><value>现在</value></data>
+  <data name="Time.Day" xml:space="preserve"><value>天</value></data>
+  <data name="Time.Hour" xml:space="preserve"><value>小时</value></data>
+  <data name="Time.Minute" xml:space="preserve"><value>分钟</value></data>
+  <data name="Time.UnitSeparator" xml:space="preserve"><value></value></data>
+  <data name="Widget.Loading" xml:space="preserve"><value>正在加载…</value></data>
+  <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>正在加载活动提供商…</value></data>
+  <data name="Widget.Unavailable" xml:space="preserve"><value>不可用</value></data>
+  <data name="Widget.Unknown" xml:space="preserve"><value>未知</value></data>
+  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>重置额度：可用 {0}</value></data>
+  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>重置 {0}：于 {1} 授予，将于 {2} 到期</value></data>
+  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} 个额外重置额度</value></data>
+  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>最后更新 {0} · 正在刷新…</value></data>
+  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
+  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>最早的现在到期</value></data>
+  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
+  <data name="Widget.ResetsOn" xml:space="preserve"><value>于 {0} 重置</value></data>
+  <data name="Widget.ResetsNow" xml:space="preserve"><value>现在重置</value></data>
+  <data name="Widget.ResetsIn" xml:space="preserve"><value>{0} 后重置</value></data>
+  <data name="Pace.CapReached" xml:space="preserve"><value>速率 · 已达到上限 · 于 {0} 重置</value></data>
+  <data name="Pace.CapBeforeReset" xml:space="preserve"><value>速率 ~{0}%/天 → 上限 {1}（约 {2:0.#} 天）</value></data>
+  <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>速率 ~{0}%/天 · 在达到上限前重置</value></data>
+</root>

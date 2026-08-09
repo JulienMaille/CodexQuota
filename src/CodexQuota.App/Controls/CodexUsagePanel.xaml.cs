@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -22,11 +23,6 @@ namespace CodexQuota.Controls
     {
         private static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(5);
 
-        // The pace line combines two events: the weekly RateWindow (from SetResult) and the profile's
-        // daily buckets (from SetProfile). Keep both, since either can arrive first.
-        private UsageSnapshot? _lastUsage;
-        private IReadOnlyList<ProfileUsageBucket> _profileBuckets = Array.Empty<ProfileUsageBucket>();
-
         /// <summary>Raised when the header refresh button is clicked; the flyout owns the fetch.</summary>
         public event Action? RefreshRequested;
 
@@ -42,6 +38,7 @@ namespace CodexQuota.Controls
         public CodexUsagePanel()
         {
             InitializeComponent();
+            ApplyLocalizedStrings();
             // The logo has no XAML fill: it is painted here from the effective theme. Loaded alone is not
             // enough — the panel can load (off-screen prewarm) before the window's theme is resolved, and
             // ActualTheme then reports Light even on a dark system, leaving a near-black glyph on the dark
@@ -57,7 +54,7 @@ namespace CodexQuota.Controls
             // The coordinator's fetch is fire-and-forget; show feedback immediately so a refresh
             // that produces identical numbers (the common case — the server aggregates on its own
             // schedule) never looks like the click did nothing.
-            UpdatedText.Text = "Refreshing…";
+            UpdatedText.Text = AppStrings.Get("Ui.Refreshing");
             RefreshRequested?.Invoke();
         }
 
@@ -83,7 +80,7 @@ namespace CodexQuota.Controls
                     {
                         PlanText.Text = string.Empty;
                         EmailText.Text = string.Empty;
-                        UpdatedText.Text = "No usage data yet.";
+                        UpdatedText.Text = AppStrings.Get("Ui.NoUsageDataYet");
                         SwapRows(nextRows);
                     }
                     return;
@@ -101,15 +98,15 @@ namespace CodexQuota.Controls
                         // API down) in the caption: freezing the old "Last updated HH:mm" line would
                         // make a permanent failure look silently fresh.
                         if (!result.IsPending)
-                            UpdatedText.Text = result.Error ?? "Last updated —";
+                            UpdatedText.Text = result.Error ?? AppStrings.Get("Ui.LastUpdatedDash");
                         return;
                     }
 
-                    PlanText.Text = usage?.LoginMethod ?? string.Empty;
+                    PlanText.Text = AppStrings.LocalizePlan(usage?.LoginMethod);
                     EmailText.Text = usage?.Email ?? string.Empty;
                     nextRows.Add(new TextBlock
                     {
-                        Text = result.Error ?? "Usage unavailable",
+                        Text = AppStrings.LocalizeStatus(result.Error, "Ui.UsageUnavailable"),
                         Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
                         Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                         TextWrapping = TextWrapping.Wrap,
@@ -119,9 +116,8 @@ namespace CodexQuota.Controls
                     return;
                 }
 
-                PlanText.Text = usage.LoginMethod ?? string.Empty;
+                PlanText.Text = AppStrings.LocalizePlan(usage.LoginMethod);
                 EmailText.Text = usage.Email ?? string.Empty;
-                _lastUsage = usage;
                 RenderMeters(usage, nextRows);
                 UpdatedText.Text = FormatUpdatedLine(result);
                 SwapRows(nextRows);
@@ -151,11 +147,9 @@ namespace CodexQuota.Controls
             if (profile is null)
                 return;
 
-            _profileBuckets = profile.DailyUsageBuckets;
-
             ProfileAsOfText.Text = profile.StatsAsOf is { } asOf
-                ? $"as of {asOf}{(profile.TodayUsageIsLocal ? " · live local sessions" : string.Empty)}"
-                : profile.TodayUsageIsLocal ? "live local sessions" : string.Empty;
+                ? AppStrings.Format(profile.TodayUsageIsLocal ? "Ui.ProfileAsOfLive" : "Ui.ProfileAsOf", asOf)
+                : profile.TodayUsageIsLocal ? AppStrings.Get("Ui.LiveLocalSessions") : string.Empty;
 
             var columns = ProfileHeatmapLayout.Build(profile.DailyUsageBuckets);
             var next = new List<UIElement>(columns.Count);
@@ -192,8 +186,8 @@ namespace CodexQuota.Controls
                     }
 
                     // Hovering a square shows the exact day + tokens in the caption below the grid;
-                    // a 12px square cannot carry the text itself. The label is invariant (English)
-                    // like the rest of the UI, whatever the OS display language.
+                    // a 12px square cannot carry the text itself. Use the full localized weekday
+                    // and month because this is the readable history detail, not the compact grid.
                     square.PointerEntered += (_, _) => ActivityDetailText.Text = DetailLabel(cell);
                     square.PointerExited += (_, _) => ActivityDetailText.Text = DefaultDetailLabel;
                     week.Children.Add(square);
@@ -210,20 +204,15 @@ namespace CodexQuota.Controls
 
             SwapColumns(next);
 
-            // The pace line needs the daily buckets; if the usage snapshot rendered before the
-            // profile arrived, rebuild the meter rows so the line appears now.
-            if (_lastUsage is { } usage)
-            {
-                var nextRows = new List<UIElement>(8);
-                RenderMeters(usage, nextRows);
-                SwapRows(nextRows);
-            }
         }
 
         private string DefaultDetailLabel = string.Empty;
 
         private static string DetailLabel(ProfileHeatmapLayout.DayCell cell) =>
-            $"{cell.Day.ToString("ddd MMM d", CultureInfo.InvariantCulture)} — {FormatTokens(cell.Tokens)} tokens";
+            AppStrings.Format(
+                "Ui.TokenDetail",
+                cell.Day.ToString("dddd d MMMM", CultureInfo.CurrentUICulture),
+                FormatTokens(cell.Tokens));
 
         private void SwapColumns(List<UIElement> next)
         {
@@ -236,12 +225,12 @@ namespace CodexQuota.Controls
         {
             double value = tokens;
             if (value >= 1_000_000_000)
-                return $"{(value / 1_000_000_000).ToString("0.##", CultureInfo.InvariantCulture)}B";
+                return $"{(value / 1_000_000_000).ToString("0.##", CultureInfo.CurrentUICulture)}B";
             if (value >= 1_000_000)
-                return $"{(value / 1_000_000).ToString("0.#", CultureInfo.InvariantCulture)}M";
+                return $"{(value / 1_000_000).ToString("0.#", CultureInfo.CurrentUICulture)}M";
             if (value >= 1_000)
-                return $"{(value / 1_000).ToString("0.#", CultureInfo.InvariantCulture)}K";
-            return tokens.ToString(CultureInfo.InvariantCulture);
+                return $"{(value / 1_000).ToString("0.#", CultureInfo.CurrentUICulture)}K";
+            return tokens.ToString("N0", CultureInfo.CurrentUICulture);
         }
 
         private static bool SeqEqual(UIElementCollection current, List<UIElement> next)
@@ -273,7 +262,7 @@ namespace CodexQuota.Controls
                 AddMeterRow(rows, MeterLabel(extra.Title), extra.Window.UsedPercent, extra.Window.ResetAt, extra.Window.ResetDescription);
 
             if (usage.Cost is { } cost)
-                AddCreditsRow(rows, "Credits", cost);
+                AddCreditsRow(rows, AppStrings.Get("Labels.Credits"), cost);
 
             if (usage.ResetCredits is { AvailableCount: > 0 } resetCredits)
                 AddResetCreditsLine(rows, resetCredits);
@@ -283,8 +272,8 @@ namespace CodexQuota.Controls
 
         /// <summary>
         /// The one-glance pace line (design: docs/pace-eta-line.md): at the current weekly burn rate,
-        /// when does the cap give out? Rendered only when both the weekly window and the profile's
-        /// daily buckets are present; hidden when either is missing.
+        /// when does the cap give out? It uses only the weekly rate window; profile token history is
+        /// intentionally not part of the projection.
         /// </summary>
         private void AddPaceRow(List<UIElement> rows, UsageSnapshot usage)
         {
@@ -295,17 +284,17 @@ namespace CodexQuota.Controls
                 return;
 
             var pace = PaceLine.Compute(
-                _profileBuckets,
                 weekly.UsedPercent,
                 weekly.ResetAt,
                 weekly.WindowMinutes ?? 7 * 24 * 60,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                PaceSettings.WorkdayHours);
             if (pace is null)
                 return;
 
             rows.Add(new TextBlock
             {
-                Text = pace.Label,
+                Text = AppStrings.FormatPace(pace),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(pace.RemainingPercent)],
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -335,7 +324,7 @@ namespace CodexQuota.Controls
             };
             head.Children.Add(new TextBlock
             {
-                Text = label,
+                Text = AppStrings.LocalizeLabel(label),
                 Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -344,8 +333,8 @@ namespace CodexQuota.Controls
             if (!string.IsNullOrWhiteSpace(resetDescription) || ResetDateDisplay.IsImminent(resetAt, DateTimeOffset.UtcNow))
             {
                 string resetText = ResetDateDisplay.IsImminent(resetAt, DateTimeOffset.UtcNow) && resetAt is { } resetWhen
-                    ? $"resets {ResetDateDisplay.FormatLocalDate(resetWhen)}"
-                    : $"resets in {resetDescription}";
+                    ? AppStrings.Format("Ui.ResetsOn", ResetDateDisplay.FormatLocalDate(resetWhen))
+                    : AppStrings.Format("Ui.ResetsIn", AppStrings.LocalizeCountdown(resetDescription));
                 head.Children.Add(new TextBlock
                 {
                     Text = resetText,
@@ -431,14 +420,16 @@ namespace CodexQuota.Controls
         {
             var line = new TextBlock
             {
-                Text = $"{resetCredits.AvailableCount.ToString("N0", CultureInfo.InvariantCulture)} reset credits",
+                Text = AppStrings.Format(
+                    "Ui.ResetCreditsCount",
+                    resetCredits.AvailableCount.ToString("N0", CultureInfo.CurrentUICulture)),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             };
             if (resetCredits.EarliestExpiresAt is { } expires)
                 line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
-                    ? $" — oldest expires {ResetDateDisplay.FormatLocalDate(expires)}"
-                    : $" — oldest expires in {CountdownFormat.Format(expires)}";
+                    ? $" · {AppStrings.Format("Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
+                    : $" · {AppStrings.Format("Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
             rows.Add(line);
         }
 
@@ -496,25 +487,42 @@ namespace CodexQuota.Controls
         private static string FormatPercent(double percent)
         {
             percent = Math.Clamp(percent, 0, 100);
-            return percent == (int)percent ? $"{percent:N0}%" : $"{percent:0.#}%";
+            return percent == (int)percent
+                ? $"{percent.ToString("N0", CultureInfo.CurrentUICulture)}%"
+                : $"{percent.ToString("0.#", CultureInfo.CurrentUICulture)}%";
         }
 
         private static string FormatCredits(double value)
-            => value.ToString(value % 1 == 0 ? "N0" : "N1", CultureInfo.InvariantCulture);
+            => value.ToString(value % 1 == 0 ? "N0" : "N1", CultureInfo.CurrentUICulture);
 
         private string FormatUpdatedLine(UsageResult result)
         {
             if (result.Fetch is not { } fetch)
-                return "Last updated —";
+                return AppStrings.Get("Ui.LastUpdatedDash");
 
             var local = fetch.FetchedAt.ToLocalTime();
             bool stale = DateTimeOffset.UtcNow - fetch.FetchedAt > StaleThreshold;
+            string time = local.ToString("HH:mm", CultureInfo.CurrentUICulture);
             string label = stale
-                ? $"Last updated {local:HH:mm} (stale)"
-                : $"Last updated {local:HH:mm}";
+                ? AppStrings.Format("Ui.LastUpdatedStale", time)
+                : AppStrings.Format("Ui.LastUpdatedAt", time);
             if (result.IsStale)
-                label += " — refreshing…";
+                label += AppStrings.Get("Ui.RefreshingSuffix");
             return label;
+        }
+
+        private void ApplyLocalizedStrings()
+        {
+            TokenActivityText.Text = AppStrings.Get("Ui.TokenActivity");
+
+            AutomationProperties.SetName(SettingsButton, AppStrings.Get("Ui.Settings"));
+            ToolTipService.SetToolTip(SettingsButton, AppStrings.Get("Ui.ShowHideAppearanceOptions"));
+
+            AutomationProperties.SetName(RefreshButton, AppStrings.Get("Ui.RefreshUsage"));
+            ToolTipService.SetToolTip(RefreshButton, AppStrings.Get("Ui.RefreshUsage"));
+
+            AutomationProperties.SetName(CloseButton, AppStrings.Get("Ui.Close"));
+            ToolTipService.SetToolTip(CloseButton, AppStrings.Get("Ui.Close"));
         }
 
         private static string MeterLabel(string title) => title.Trim();
@@ -525,7 +533,7 @@ namespace CodexQuota.Controls
                 return;
 
             var brush = ActualTheme == ElementTheme.Dark ? LogoBrushDark : LogoBrushLight;
-            ProviderGlyphRenderer.TryApply(LogoPath, ProviderId.Codex, brush);
+            ProviderGlyphRenderer.TryApply(LogoPath, ProviderId.Codex, brush, normalizeToViewport: false);
         }
     }
 }

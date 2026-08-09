@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Ui.Settings" xml:space="preserve"><value>Настройки</value></data>
+  <data name="Ui.ShowHideAppearanceOptions" xml:space="preserve"><value>Показать или скрыть параметры оформления</value></data>
+  <data name="Ui.RefreshUsage" xml:space="preserve"><value>Обновить использование</value></data>
+  <data name="Ui.Close" xml:space="preserve"><value>Закрыть</value></data>
+  <data name="Ui.TokenActivity" xml:space="preserve"><value>Использование токенов</value></data>
+  <data name="Ui.Refreshing" xml:space="preserve"><value>Обновление…</value></data>
+  <data name="Ui.NoUsageDataYet" xml:space="preserve"><value>Данных об использовании пока нет.</value></data>
+  <data name="Ui.LastUpdatedDash" xml:space="preserve"><value>Обновлено ·</value></data>
+  <data name="Ui.UsageUnavailable" xml:space="preserve"><value>Использование недоступно</value></data>
+  <data name="Ui.ProfileAsOf" xml:space="preserve"><value>по состоянию на {0}</value></data>
+  <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>по состоянию на {0} · локальные сеансы</value></data>
+  <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>локальные сеансы</value></data>
+  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} токенов</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>сброс {0}</value></data>
+  <data name="Ui.ResetsIn" xml:space="preserve"><value>сброс через {0}</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} кредитов на сброс</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>раньше всего истекает {0}</value></data>
+  <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>раньше всего истекает через {0}</value></data>
+  <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Обновлено {0}</value></data>
+  <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Обновлено {0} (устарело)</value></data>
+  <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · обновление…</value></data>
+  <data name="Ui.AppearanceIcon" xml:space="preserve"><value>Значок</value></data>
+  <data name="Ui.AppearanceBars" xml:space="preserve"><value>Полосы</value></data>
+  <data name="Ui.AppearanceColorPercent" xml:space="preserve"><value>Цвет %</value></data>
+  <data name="Ui.WarnBelowPercent" xml:space="preserve"><value>Предупреждать ниже %</value></data>
+  <data name="Ui.WorkdayHours" xml:space="preserve"><value>Рабочие часы</value></data>
+  <data name="Ui.ShowBadgeTooltip" xml:space="preserve"><value>Показывать значок Codex на плитке панели задач</value></data>
+  <data name="Ui.ShowBarsTooltip" xml:space="preserve"><value>Показывать индикаторы выполнения на плитке панели задач; проценты отображаются всегда</value></data>
+  <data name="Ui.ShowColorTooltip" xml:space="preserve"><value>Раскрашивать оставшийся процент: оранжевым при 50 % или ниже, красным при 20 % или ниже</value></data>
+  <data name="Ui.CautionTooltip" xml:space="preserve"><value>Предупреждение (оранжевый) ниже этого оставшегося процента</value></data>
+  <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Критический уровень (красный) ниже этого оставшегося процента</value></data>
+  <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Предполагаемые часы программирования в каждом 24-часовом дне квоты</value></data>
+  <data name="Labels.Session" xml:space="preserve"><value>Сеанс</value></data>
+  <data name="Labels.Weekly" xml:space="preserve"><value>За неделю</value></data>
+  <data name="Labels.Monthly" xml:space="preserve"><value>За месяц</value></data>
+  <data name="Labels.CodeReview" xml:space="preserve"><value>Проверка кода</value></data>
+  <data name="Labels.Credits" xml:space="preserve"><value>Кредиты</value></data>
+  <data name="Labels.Resets" xml:space="preserve"><value>Сбросы</value></data>
+  <data name="Labels.Usage" xml:space="preserve"><value>Использование</value></data>
+  <data name="Labels.Model" xml:space="preserve"><value>Модель</value></data>
+  <data name="Labels.SparkSession" xml:space="preserve"><value>Сеанс Spark</value></data>
+  <data name="Labels.SparkWeekly" xml:space="preserve"><value>Spark за неделю</value></data>
+  <data name="Labels.Total" xml:space="preserve"><value>Всего</value></data>
+  <data name="Labels.AutoComposer" xml:space="preserve"><value>Auto+Composer</value></data>
+  <data name="Labels.Api" xml:space="preserve"><value>API</value></data>
+  <data name="Plan.Guest" xml:space="preserve"><value>Гость</value></data>
+  <data name="Plan.Free" xml:space="preserve"><value>Бесплатный</value></data>
+  <data name="Plan.Business" xml:space="preserve"><value>Business</value></data>
+  <data name="Plan.Enterprise" xml:space="preserve"><value>Enterprise</value></data>
+  <data name="Plan.Education" xml:space="preserve"><value>Образование</value></data>
+  <data name="Time.Now" xml:space="preserve"><value>сейчас</value></data>
+  <data name="Time.Day" xml:space="preserve"><value>д</value></data>
+  <data name="Time.Hour" xml:space="preserve"><value>ч</value></data>
+  <data name="Time.Minute" xml:space="preserve"><value>мин</value></data>
+  <data name="Time.UnitSeparator" xml:space="preserve"><value> </value></data>
+  <data name="Widget.Loading" xml:space="preserve"><value>Загрузка…</value></data>
+  <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Загрузка активного провайдера…</value></data>
+  <data name="Widget.Unavailable" xml:space="preserve"><value>Недоступно</value></data>
+  <data name="Widget.Unknown" xml:space="preserve"><value>неизвестно</value></data>
+  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>Кредиты на сброс: доступно {0}</value></data>
+  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>Сброс {0}: выдано {1}, истекает {2}</value></data>
+  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} дополнительных кредитов на сброс</value></data>
+  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>Обновлено {0} · обновление…</value></data>
+  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>раньше всего истекает {0}</value></data>
+  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>раньше всего истекает сейчас</value></data>
+  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>раньше всего истекает через {0}</value></data>
+  <data name="Widget.ResetsOn" xml:space="preserve"><value>сброс {0}</value></data>
+  <data name="Widget.ResetsNow" xml:space="preserve"><value>сброс сейчас</value></data>
+  <data name="Widget.ResetsIn" xml:space="preserve"><value>сброс через {0}</value></data>
+  <data name="Pace.CapReached" xml:space="preserve"><value>Темп · лимит достигнут · сброс {0}</value></data>
+  <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Темп ~{0} % квоты/день → лимит {1} (~{2:0.#} д)</value></data>
+  <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Темп ~{0} % квоты/день · сброс до достижения лимита</value></data>
+</root>

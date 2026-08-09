@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using CodexQuota.Diagnostics;
 using CodexQuota.Interop;
 
 namespace CodexQuota.Taskbar
@@ -33,19 +31,6 @@ namespace CodexQuota.Taskbar
             return success;
         }
 
-        public string GetPositionPath()
-        {
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CodexQuota");
-            string path = Path.Combine(directory, BuildPositionFileName(DisplayKey));
-
-            if (IsPrimary)
-                return MigrateLegacyPrimaryPosition(directory, path);
-
-            return path;
-        }
-
         internal static bool IsTaskbarClassName(string className, out bool isPrimary)
         {
             isPrimary = string.Equals(className, PrimaryClassName, StringComparison.Ordinal);
@@ -70,9 +55,6 @@ namespace CodexQuota.Taskbar
                     CultureInfo.InvariantCulture,
                     $"{bounds.left}_{bounds.top}_{bounds.right}_{bounds.bottom}");
         }
-
-        internal static string BuildPositionFileName(string displayKey)
-            => $"taskbar-widget-position-{displayKey}.txt";
 
         private static bool EnumTaskbarWindow(IntPtr hwnd, IntPtr lParam)
         {
@@ -115,25 +97,5 @@ namespace CodexQuota.Taskbar
 
         private static RECT GetBounds(IntPtr hwnd)
             => User32.GetWindowRect(hwnd, out var bounds) ? bounds : default;
-
-        private static string MigrateLegacyPrimaryPosition(string directory, string displayPositionPath)
-        {
-            string legacyPath = Path.Combine(directory, "taskbar-widget-position.txt");
-            if (File.Exists(displayPositionPath) || !File.Exists(legacyPath))
-                return displayPositionPath;
-
-            try
-            {
-                Directory.CreateDirectory(directory);
-                File.Move(legacyPath, displayPositionPath);
-                Log.Information($"Migrated the primary taskbar widget position to {Path.GetFileName(displayPositionPath)}");
-                return displayPositionPath;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Could not migrate the primary taskbar widget position");
-                return legacyPath;
-            }
-        }
     }
 }

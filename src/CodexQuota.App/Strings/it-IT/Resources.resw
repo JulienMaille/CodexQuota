@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Ui.Settings" xml:space="preserve"><value>Impostazioni</value></data>
+  <data name="Ui.ShowHideAppearanceOptions" xml:space="preserve"><value>Mostra o nascondi le opzioni di aspetto</value></data>
+  <data name="Ui.RefreshUsage" xml:space="preserve"><value>Aggiorna utilizzo</value></data>
+  <data name="Ui.Close" xml:space="preserve"><value>Chiudi</value></data>
+  <data name="Ui.TokenActivity" xml:space="preserve"><value>Attività dei token</value></data>
+  <data name="Ui.Refreshing" xml:space="preserve"><value>Aggiornamento…</value></data>
+  <data name="Ui.NoUsageDataYet" xml:space="preserve"><value>Nessun dato di utilizzo.</value></data>
+  <data name="Ui.LastUpdatedDash" xml:space="preserve"><value>Ultimo aggiornamento ·</value></data>
+  <data name="Ui.UsageUnavailable" xml:space="preserve"><value>Utilizzo non disponibile</value></data>
+  <data name="Ui.ProfileAsOf" xml:space="preserve"><value>al {0}</value></data>
+  <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>al {0} · sessioni locali</value></data>
+  <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>sessioni locali</value></data>
+  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} token</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>si reimposta il {0}</value></data>
+  <data name="Ui.ResetsIn" xml:space="preserve"><value>si reimposta tra {0}</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} crediti di ripristino</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>il più vecchio scade il {0}</value></data>
+  <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>il più vecchio scade tra {0}</value></data>
+  <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Ultimo aggiornamento {0}</value></data>
+  <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Ultimo aggiornamento {0} (obsoleto)</value></data>
+  <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · aggiornamento…</value></data>
+  <data name="Ui.AppearanceIcon" xml:space="preserve"><value>Icona</value></data>
+  <data name="Ui.AppearanceBars" xml:space="preserve"><value>Barre</value></data>
+  <data name="Ui.AppearanceColorPercent" xml:space="preserve"><value>Colore %</value></data>
+  <data name="Ui.WarnBelowPercent" xml:space="preserve"><value>Avvisa sotto %</value></data>
+  <data name="Ui.WorkdayHours" xml:space="preserve"><value>Ore lavorative</value></data>
+  <data name="Ui.ShowBadgeTooltip" xml:space="preserve"><value>Mostra il badge Codex nel riquadro della barra delle applicazioni</value></data>
+  <data name="Ui.ShowBarsTooltip" xml:space="preserve"><value>Mostra le barre di avanzamento nel riquadro della barra delle applicazioni; le percentuali restano visibili</value></data>
+  <data name="Ui.ShowColorTooltip" xml:space="preserve"><value>Colora la percentuale rimanente: arancione al 50% o meno, rosso al 20% o meno</value></data>
+  <data name="Ui.CautionTooltip" xml:space="preserve"><value>Attenzione (arancione) sotto questa percentuale rimanente</value></data>
+  <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Critico (rosso) sotto questa percentuale rimanente</value></data>
+  <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Ore di programmazione previste per ogni giornata di quota di 24 ore</value></data>
+  <data name="Labels.Session" xml:space="preserve"><value>Sessione</value></data>
+  <data name="Labels.Weekly" xml:space="preserve"><value>Settimanale</value></data>
+  <data name="Labels.Monthly" xml:space="preserve"><value>Mensile</value></data>
+  <data name="Labels.CodeReview" xml:space="preserve"><value>Revisione del codice</value></data>
+  <data name="Labels.Credits" xml:space="preserve"><value>Crediti</value></data>
+  <data name="Labels.Resets" xml:space="preserve"><value>Ripristini</value></data>
+  <data name="Labels.Usage" xml:space="preserve"><value>Utilizzo</value></data>
+  <data name="Labels.Model" xml:space="preserve"><value>Modello</value></data>
+  <data name="Labels.SparkSession" xml:space="preserve"><value>Sessione Spark</value></data>
+  <data name="Labels.SparkWeekly" xml:space="preserve"><value>Settimanale Spark</value></data>
+  <data name="Labels.Total" xml:space="preserve"><value>Totale</value></data>
+  <data name="Labels.AutoComposer" xml:space="preserve"><value>Auto+Composer</value></data>
+  <data name="Labels.Api" xml:space="preserve"><value>API</value></data>
+  <data name="Plan.Guest" xml:space="preserve"><value>Ospite</value></data>
+  <data name="Plan.Free" xml:space="preserve"><value>Gratuito</value></data>
+  <data name="Plan.Business" xml:space="preserve"><value>Business</value></data>
+  <data name="Plan.Enterprise" xml:space="preserve"><value>Enterprise</value></data>
+  <data name="Plan.Education" xml:space="preserve"><value>Istruzione</value></data>
+  <data name="Time.Now" xml:space="preserve"><value>ora</value></data>
+  <data name="Time.Day" xml:space="preserve"><value>g</value></data>
+  <data name="Time.Hour" xml:space="preserve"><value>h</value></data>
+  <data name="Time.Minute" xml:space="preserve"><value>min</value></data>
+  <data name="Time.UnitSeparator" xml:space="preserve"><value> </value></data>
+  <data name="Widget.Loading" xml:space="preserve"><value>Caricamento…</value></data>
+  <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Caricamento del provider attivo…</value></data>
+  <data name="Widget.Unavailable" xml:space="preserve"><value>Non disponibile</value></data>
+  <data name="Widget.Unknown" xml:space="preserve"><value>sconosciuto</value></data>
+  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>Crediti di ripristino: {0} disponibili</value></data>
+  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>Ripristino {0}: concesso il {1}, scade il {2}</value></data>
+  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} altri crediti di ripristino</value></data>
+  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>Ultimo aggiornamento {0} · aggiornamento…</value></data>
+  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>il più vecchio scade il {0}</value></data>
+  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>il più vecchio scade ora</value></data>
+  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>il più vecchio scade tra {0}</value></data>
+  <data name="Widget.ResetsOn" xml:space="preserve"><value>si reimposta il {0}</value></data>
+  <data name="Widget.ResetsNow" xml:space="preserve"><value>si reimposta ora</value></data>
+  <data name="Widget.ResetsIn" xml:space="preserve"><value>si reimposta tra {0}</value></data>
+  <data name="Pace.CapReached" xml:space="preserve"><value>Ritmo · limite raggiunto · si reimposta il {0}</value></data>
+  <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Ritmo ~{0}% della quota/giorno → limite {1} (~{2:0.#} g)</value></data>
+  <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Ritmo ~{0}% della quota/giorno · si reimposta prima del limite</value></data>
+</root>

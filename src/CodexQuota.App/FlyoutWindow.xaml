@@ -6,76 +6,6 @@
     xmlns:controls="using:CodexQuota.Controls">
 
     <Grid x:Name="Root" CornerRadius="8">
-        <Grid.Resources>
-            <!-- Compact checkbox: 16px box (default is 20px) so the toggle row reads small in the flyout.
-                 Same palette resources as the default control; only the geometry is reduced. -->
-            <Style TargetType="CheckBox">
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="MinHeight" Value="20"/>
-                <Setter Property="Padding" Value="6,0,0,0"/>
-                <!-- ContentControl default is Top: the template's ContentPresenter binds this, so without
-                     it the label hugs the row top while the 16px box centers. -->
-                <Setter Property="VerticalContentAlignment" Value="Center"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="CheckBox">
-                            <Grid Background="Transparent">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CheckStates">
-                                        <VisualState x:Name="Checked">
-                                            <VisualState.Setters>
-                                                <Setter Target="CheckBoxOuterBorder.Background" Value="{ThemeResource AccentFillColorDefaultBrush}"/>
-                                                <Setter Target="CheckBoxOuterBorder.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}"/>
-                                                <Setter Target="CheckGlyph.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Unchecked">
-                                            <VisualState.Setters>
-                                                <Setter Target="CheckBoxOuterBorder.Background" Value="{ThemeResource ControlFillColorDefaultBrush}"/>
-                                                <Setter Target="CheckBoxOuterBorder.BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}"/>
-                                                <Setter Target="CheckGlyph.Foreground" Value="Transparent"/>
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="CheckBoxOuterBorder"
-                                        Width="16"
-                                        Height="16"
-                                        BorderThickness="1"
-                                        CornerRadius="3"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
-                                    <FontIcon x:Name="CheckGlyph"
-                                              Glyph="&#xE73E;"
-                                              FontSize="14"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              Foreground="Transparent"/>
-                                </Border>
-                                <ContentPresenter x:Name="ContentPresenter"
-                                                  Grid.Column="1"
-                                                  Content="{TemplateBinding Content}"
-                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                  Margin="{TemplateBinding Padding}"
-                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                                  FontFamily="{TemplateBinding FontFamily}"
-                                                  FontSize="{TemplateBinding FontSize}"
-                                                  FontWeight="{TemplateBinding FontWeight}"
-                                                  Foreground="{TemplateBinding Foreground}"/>
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-        </Grid.Resources>
         <ScrollViewer Padding="16,14,16,4"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
@@ -106,6 +36,10 @@
                         HorizontalAlignment="Left">
                 <CheckBox x:Name="ShowIconCheck"
                           Content="Icon"
+                          FontSize="12"
+                          MinHeight="20"
+                          Padding="0"
+                          VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
                           Checked="AppearanceCheck_Checked"
@@ -113,6 +47,10 @@
                           ToolTipService.ToolTip="Show the Codex badge in the taskbar tile"/>
                 <CheckBox x:Name="ShowProgressBarCheck"
                           Content="Bars"
+                          FontSize="12"
+                          MinHeight="20"
+                          Padding="0"
+                          VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
                           Checked="AppearanceCheck_Checked"
@@ -120,6 +58,10 @@
                           ToolTipService.ToolTip="Show progress bars in the taskbar tile; percentages always stay"/>
                 <CheckBox x:Name="ColorCodeTextCheck"
                           Content="Color %"
+                          FontSize="12"
+                          MinHeight="20"
+                          Padding="0"
+                          VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
                           Checked="AppearanceCheck_Checked"
@@ -130,7 +72,8 @@
                         Spacing="8"
                         HorizontalAlignment="Left"
                         Margin="0,8,0,0">
-                <TextBlock Text="Warn below %"
+                <TextBlock x:Name="WarnBelowText"
+                           Text="Warn below %"
                            VerticalAlignment="Center"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Style="{StaticResource CaptionTextBlockStyle}"/>
@@ -152,6 +95,24 @@
                            SpinButtonPlacementMode="Compact"
                            ValueChanged="WarnThresholdBox_ValueChanged"
                            ToolTipService.ToolTip="Critical (red) below this remaining percent"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Left">
+                <TextBlock x:Name="WorkdayHoursText"
+                           Text="Workday hours"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                <NumberBox x:Name="WorkdayHoursBox"
+                           Value="8"
+                           Minimum="1"
+                           Maximum="24"
+                           SmallChange="1"
+                           Width="64"
+                           SpinButtonPlacementMode="Compact"
+                           ValueChanged="WorkdayHoursBox_ValueChanged"
+                           ToolTipService.ToolTip="Assumed coding hours in each 24-hour quota day"/>
             </StackPanel>
         </StackPanel>
     </Grid>

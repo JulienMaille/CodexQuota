@@ -5,7 +5,6 @@ using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
@@ -45,7 +44,6 @@ namespace CodexQuota.Controls
         private const double NormalizedGlyphExtent = 88;
         private const double StaleOpacity = 0.55;
         private const int PanelColumnSpacing = 5;
-        private const int SlideMilliseconds = 300;
         // Slack the width math reserves on top of the measured columns, so a rounding difference between
         // the analytic total and what the Grid actually arranges can never clip the last column.
         private const int WidthSlack = 2;
@@ -56,15 +54,6 @@ namespace CodexQuota.Controls
 
         public event Action? Clicked;
         public event Action<int>? DesiredHostWidthChanged;
-
-        public bool SuppressNextClick { get; set; }
-
-        /// <summary>
-        /// Skips the cross-fade on the next render. Set when a tile is taking over another provider as part
-        /// of a re-order: the movement is being conveyed by <see cref="AnimateSlide"/>, and fading the
-        /// content at the same time turns a clean shift into a flicker.
-        /// </summary>
-        public bool SuppressNextTransition { get; set; }
 
         /// <summary>
         /// The width (logical px) this tile last asked its host for. The taskbar host sums this across the
@@ -79,19 +68,8 @@ namespace CodexQuota.Controls
         private SolidColorBrush _markerBrush = new SolidColorBrush(Colors.White);
         private List<WidgetUsageRow> _rows = new();
         private UsageResult? _lastResult;
-        private ProviderId? _lastAppliedProvider;
         private string? _lastRenderSignature;
-        private bool _hasRevealed;
         private bool _isActiveToolVisible = true;
-        // Storyboards and their animations are allocated on first use and re-aimed afterwards; all three
-        // run on ordinary usage publishes, so rebuilding them per pass was continuous garbage.
-        private Storyboard? _visibilityStoryboard;
-        private DoubleAnimation? _visibilityOpacity;
-        private DoubleAnimation? _visibilityOffset;
-        private Storyboard? _softRefreshStoryboard;
-        private DoubleAnimation? _softRefreshAnimation;
-        private Storyboard? _slideStoryboard;
-        private DoubleAnimation? _slideAnimation;
 
         /// <summary>
         /// Returns the display name for the constrained taskbar widget.
@@ -112,9 +90,9 @@ namespace CodexQuota.Controls
         /// The width this tile WOULD take, without rendering it.
         ///
         /// The host sums this across its tiles to size the widget host window. Rendering to read the width
-        /// made the tile visibly flash — every re-render restarts the refresh animation, and the host
-        /// re-runs this on every usage publish — so the column widths, which are a pure function of the
-        /// rows, are computed directly instead.
+        /// made the tile visibly flash — every re-render disturbed the visible tile, and the host re-runs
+        /// this on every usage publish — so the column widths, which are a pure function of the rows, are
+        /// computed directly instead.
         /// </summary>
         public int MeasureDesiredWidth()
             => CalculateDesiredWidth(CurrentRows());
@@ -133,18 +111,9 @@ namespace CodexQuota.Controls
             WidgetAppearanceSettings.Changed += OnAppearanceChanged;
             SystemThemeWatcher.Start();
             SystemThemeWatcher.Changed += OnSystemThemeChanged;
-            // The tile click is a Tapped gesture. It must stay a gesture event: the widget host
-            // captures the pointer during presses (drag/reposition machinery), and raw
-            // PointerReleased routes to the capture owner, not to this tile.
-            Tapped += (_, _) =>
-            {
-                if (SuppressNextClick)
-                {
-                    SuppressNextClick = false;
-                    return;
-                }
-                Clicked?.Invoke();
-            };
+            // The tile is intentionally click-only. Keep activation as a Tapped gesture so the
+            // taskbar host does not need to expose raw pointer handling here.
+            Tapped += (_, _) => Clicked?.Invoke();
         }
 
         // B1: the appearance Changed event is static, so an unsubscribed summary is rooted forever and
@@ -202,9 +171,6 @@ namespace CodexQuota.Controls
             if (!force && _lastRenderSignature == signature)
                 return;
 
-            var isFirstReveal = !_hasRevealed;
-            var providerChanged = _lastAppliedProvider != result.Id;
-            _lastAppliedProvider = result.Id;
             _lastRenderSignature = signature;
             _lastResult = result;
             ApplyTaskbarForeground();
@@ -241,8 +207,7 @@ namespace CodexQuota.Controls
                     new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 0, "--", HasBar: false),
                 };
                 RenderRows();
-                AnimateRender(isFirstReveal, providerSwitch: providerChanged);
-                ToolTipService.SetToolTip(this, $"{widgetName}: {result.Error ?? "Loading..."}");
+                ToolTipService.SetToolTip(this, $"{widgetName}: {AppStrings.LocalizeStatus(result.Error, "Widget.Loading")}");
                 return;
             }
 
@@ -254,8 +219,7 @@ namespace CodexQuota.Controls
                     new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 100, "!"),
                 };
                 RenderRows();
-                AnimateRender(isFirstReveal, providerSwitch: providerChanged);
-                ToolTipService.SetToolTip(this, $"{widgetName}: {result.Error ?? "Unavailable"}");
+                ToolTipService.SetToolTip(this, $"{widgetName}: {AppStrings.LocalizeStatus(result.Error, "Widget.Unavailable")}");
                 return;
             }
 
@@ -268,7 +232,6 @@ namespace CodexQuota.Controls
             }
             RenderRows();
             SetBars();
-            AnimateRender(isFirstReveal, providerSwitch: providerChanged);
 
             var tooltipLines = _rows.Select(FormatTooltipLine);
             var plan = FormatPlanLabel(result.Id, widgetName, usage.LoginMethod);
@@ -287,21 +250,7 @@ namespace CodexQuota.Controls
 
             _isActiveToolVisible = isVisible;
             IsHitTestVisible = isVisible;
-            if (isVisible)
-            {
-                Visibility = Visibility.Visible;
-                if (!_hasRevealed)
-                {
-                    if (_lastResult is { } pending)
-                        Apply(pending, force: true);
-                    return;
-                }
-
-                AnimateVisibility(toOpacity: 1, toOffset: 0, milliseconds: 300);
-                return;
-            }
-
-            AnimateVisibility(toOpacity: 0, toOffset: 6, milliseconds: 460);
+            Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
         }
 
         /// <summary>The Codex tile's row set, built unconditionally from the usage snapshot.</summary>
@@ -445,7 +394,9 @@ namespace CodexQuota.Controls
 
             var lines = new List<string>
             {
-                $"Reset credits: {resetCredits.AvailableCount.ToString("N0", CultureInfo.InvariantCulture)} available",
+                AppStrings.Format(
+                    "Widget.ResetCreditsAvailable",
+                    resetCredits.AvailableCount.ToString("N0", CultureInfo.CurrentUICulture)),
             };
 
             int shown = 0;
@@ -454,12 +405,12 @@ namespace CodexQuota.Controls
                 var credit = resetCredits.Credits[i];
                 string granted = FormatLocalDateTime(credit.GrantedAt);
                 string expires = FormatLocalDateTime(credit.ExpiresAt);
-                lines.Add($"Reset {shown + 1}: granted {granted}, expires {expires}");
+                lines.Add(AppStrings.Format("Widget.ResetGrantedExpires", shown + 1, granted, expires));
                 shown++;
             }
 
             if (resetCredits.Credits.Count > shown)
-                lines.Add($"+{resetCredits.Credits.Count - shown} more reset credits");
+                lines.Add(AppStrings.Format("Widget.MoreResetCredits", resetCredits.Credits.Count - shown));
 
             return "\n" + string.Join("\n", lines);
         }
@@ -467,7 +418,7 @@ namespace CodexQuota.Controls
         /// <summary>Names the age of a snapshot restored from the previous session; empty when live.</summary>
         private static string StaleTooltipLine(UsageResult result)
             => result.IsStale && result.Fetch is { } fetch
-                ? $"\nLast updated {fetch.FetchedAt.ToLocalTime():t} — refreshing…"
+                ? $"\n{AppStrings.Format("Widget.LastUpdatedRefreshing", FormatLocalDateTime(fetch.FetchedAt))}"
                 : string.Empty;
 
         private static string BuildRenderSignature(UsageResult result)
@@ -542,39 +493,40 @@ namespace CodexQuota.Controls
         }
 
         private static string FormatPlanLabel(ProviderId id, string displayName, string? loginMethod)
-            => PlanDisplayNames.ForTitle(id, displayName, loginMethod);
+            => AppStrings.LocalizePlan(PlanDisplayNames.ForTitle(id, displayName, loginMethod));
 
         private static string FormatTooltipLine(WidgetUsageRow row)
         {
             string resetDisplay = row.ResetDescription ?? string.Empty;
             bool imminent = ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow);
+            string label = AppStrings.LocalizeLabel(row.Label);
 
             if (resetDisplay.Length == 0 && !imminent)
-                return $"{row.Label}: {row.Value}";
+                return $"{label}: {row.Value}";
 
             string? dateForm = imminent && row.ResetAt is { } resetWhen ? ResetDateDisplay.FormatLocalDate(resetWhen) : null;
 
             if (row.Label == "Resets")
             {
                 string expiry = dateForm is not null
-                    ? $"oldest expires {dateForm}"
+                    ? AppStrings.Format("Widget.OldestExpiresOn", dateForm)
                     : resetDisplay == "now"
-                        ? "oldest expires now"
-                        : $"oldest expires in {resetDisplay}";
-                return $"{row.Label}: {row.Value} - {expiry}";
+                        ? AppStrings.Get("Widget.OldestExpiresNow")
+                        : AppStrings.Format("Widget.OldestExpiresIn", AppStrings.LocalizeCountdown(resetDisplay));
+                return $"{label}: {row.Value} - {expiry}";
             }
 
             string reset = dateForm is not null
-                ? $"resets {dateForm}"
+                ? AppStrings.Format("Widget.ResetsOn", dateForm)
                 : resetDisplay == "now"
-                    ? "resets now"
-                    : $"resets in {resetDisplay}";
-            return $"{row.Label}: {row.Value} - {reset}";
+                    ? AppStrings.Get("Widget.ResetsNow")
+                    : AppStrings.Format("Widget.ResetsIn", AppStrings.LocalizeCountdown(resetDisplay));
+            return $"{label}: {row.Value} - {reset}";
         }
 
         private static string WidgetTooltipTitle(string widgetName) => widgetName;
 
-        private static string BaseLabelText(WidgetUsageRow row) => row.Label;
+        private static string BaseLabelText(WidgetUsageRow row) => AppStrings.LocalizeLabel(row.Label);
 
         private static double MeasureTextWidth(string text, int fontSize = WidgetFontSize)
         {
@@ -592,10 +544,10 @@ namespace CodexQuota.Controls
         private static string FormatLocalDateTime(DateTimeOffset? timestamp)
         {
             if (timestamp is not DateTimeOffset value)
-                return "unknown";
+                return AppStrings.Get("Widget.Unknown");
 
             var local = value.ToLocalTime();
-            return $"{local:MMM d h:mm tt}";
+            return local.ToString("d MMM HH:mm", CultureInfo.CurrentUICulture);
         }
 
         private static Brush ResetBrush(string resetDescription)
@@ -671,183 +623,10 @@ namespace CodexQuota.Controls
         private sealed record WidgetLayoutMetrics(double LabelWidth, double ResetWidth, double ValueWidth);
 
         /// <summary>
-        /// Slides this tile into its new position from <paramref name="fromOffsetX"/> logical px away.
-        ///
-        /// The tiles occupy fixed slots and providers are re-assigned between them, so a re-order is really
-        /// a content swap. Starting each tile at the offset where its provider used to sit and easing that
-        /// back to zero turns the swap into what the eye expects: the existing tiles travel sideways and
-        /// the newcomer arrives from the edge.
-        /// </summary>
-        public void AnimateSlide(double fromOffsetX)
-        {
-            _slideStoryboard?.Stop();
-
-            // The RESTING value is written before starting, and the animation supplies the offset through
-            // its From. Storyboard.Stop reverts a property to its local value, so a slide interrupted by the
-            // next layout pass — which happens constantly, the layout is recomputed on every usage publish —
-            // lands at zero instead of stranding the tile at the offset it started from.
-            RootTranslate.X = 0;
-
-            // Storyboard and animation are built once and re-aimed, not rebuilt. These run on every layout
-            // pass across every tile, and a fresh Storyboard + DoubleAnimation + CubicEase per pass was
-            // steady garbage for the life of the process.
-            if (_slideStoryboard is null)
-            {
-                _slideAnimation = CreateDoubleAnimation(RootTranslate, "X", fromOffsetX, 0, SlideMilliseconds);
-                _slideStoryboard = new Storyboard();
-                _slideStoryboard.Children.Add(_slideAnimation);
-            }
-
-            _slideAnimation!.From = fromOffsetX;
-            _slideStoryboard.Begin();
-        }
-
-        /// <summary>
-        /// Whether a render that skips the cross-fade still has to put the tile on screen outright.
-        ///
-        /// True exactly when this is the tile's first render: the root ships at Opacity 0, and the reveal is
-        /// the only thing that raises it. Provider seeding happens before the layout pass marks the slot
-        /// visible, so consulting the pre-layout visibility flag here can leave the tile permanently
-        /// transparent. The synchronous layout pass still collapses any slot that should not be shown.
-        /// </summary>
-        internal static bool ShouldRevealWithoutTransition(bool isFirstReveal)
-            => isFirstReveal;
-
-        private void AnimateRender(bool isFirstReveal, bool providerSwitch = false)
-        {
-            if (SuppressNextTransition)
-            {
-                SuppressNextTransition = false;
-                Panel.Opacity = RestingPanelOpacity;
-
-                // Suppressing the cross-fade must not swallow the first reveal. Root ships at Opacity 0 and
-                // only the reveal raises it, so a tile seeded from the boot snapshot (which suppresses the
-                // transition) used to stay fully transparent for the life of the process: measured, laid
-                // out, Visible, and painting nothing. Show it outright instead — skipping the fade is the
-                // whole point of the suppression, showing it is not.
-                if (ShouldRevealWithoutTransition(isFirstReveal))
-                {
-                    Root.Opacity = 1;
-                    RootTranslate.Y = 0;
-                }
-
-                _hasRevealed = true;
-                return;
-            }
-
-            _hasRevealed = true;
-
-            if (isFirstReveal)
-                AnimateFirstReveal();
-            else if (providerSwitch)
-                AnimateProviderSwitch();
-            else
-                AnimateSoftRefresh();
-        }
-
-        // A provider switch rebuilds every row and usually resizes the host, so a hard content swap
-        // reads as the whole widget flashing. Cross-fade the new content in (from fully hidden, not the
-        // soft-refresh's partial dim) so the switch feels like a transition rather than a redraw.
-        private void AnimateProviderSwitch()
-        {
-            Panel.Opacity = 0;
-            AnimatePanelOpacity(from: 0, to: RestingPanelOpacity, milliseconds: 200);
-        }
-
-        private void AnimateFirstReveal()
-        {
-            Root.Opacity = 0;
-            RootTranslate.Y = 4;
-
-            AnimateVisibility(toOpacity: _isActiveToolVisible ? 1 : 0, toOffset: _isActiveToolVisible ? 0 : 4, milliseconds: 260);
-        }
-
-        private void AnimateSoftRefresh()
-        {
-            // A refresh replaces the row elements in-place. Dimming the entire panel here made every
-            // quota poll flash, especially when providers publish a stale snapshot followed by a live
-            // result a moment later. Keep the resting opacity stable; first reveal and provider switches
-            // still use their dedicated transitions.
-            Panel.Opacity = RestingPanelOpacity;
-        }
-
-        /// <summary>
-        /// Runs the shared Panel.Opacity storyboard. Both callers fire on ordinary usage publishes, so the
-        /// storyboard is built once and re-aimed rather than reallocated per refresh.
-        /// </summary>
-        private void AnimatePanelOpacity(double from, double to, int milliseconds)
-        {
-            _softRefreshStoryboard?.Stop();
-            if (_softRefreshStoryboard is null)
-            {
-                _softRefreshAnimation = CreateDoubleAnimation(Panel, "Opacity", from, to, milliseconds);
-                _softRefreshStoryboard = new Storyboard();
-                _softRefreshStoryboard.Children.Add(_softRefreshAnimation);
-            }
-
-            _softRefreshAnimation!.From = from;
-            _softRefreshAnimation.To = to;
-            _softRefreshAnimation.Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds));
-            _softRefreshStoryboard.Begin();
-        }
-
-        /// <summary>
-        /// The opacity the panel must settle at for the result currently shown. A DoubleAnimation's final
-        /// To value becomes the property's resting value, so every animation that touches Panel.Opacity has
-        /// to end here or it animates away the stale-snapshot dimming applied in Apply (#21).
+        /// The opacity for the result currently shown. Values restored from disk remain dimmed until a live
+        /// fetch confirms them, so a boot-time snapshot never reads as current data.
         /// </summary>
         private double RestingPanelOpacity => _lastResult?.IsStale == true ? StaleOpacity : 1.0;
-
-        private void AnimateVisibility(double toOpacity, double toOffset, int milliseconds)
-        {
-            double fromOpacity = Root.Opacity;
-            double fromOffset = RootTranslate.Y;
-
-            _visibilityStoryboard?.Stop();
-            // Same rule as AnimateSlide: park the local values at the destination and let the animation
-            // supply the start through From, so an interrupted transition can never leave a tile stuck
-            // invisible or offset.
-            Root.Opacity = toOpacity;
-            RootTranslate.Y = toOffset;
-
-            if (_visibilityStoryboard is null)
-            {
-                _visibilityOpacity = CreateDoubleAnimation(Root, "Opacity", fromOpacity, toOpacity, milliseconds);
-                _visibilityOffset = CreateDoubleAnimation(RootTranslate, "Y", fromOffset, toOffset, milliseconds);
-                _visibilityStoryboard = new Storyboard();
-                _visibilityStoryboard.Children.Add(_visibilityOpacity);
-                _visibilityStoryboard.Children.Add(_visibilityOffset);
-            }
-
-            var duration = new Duration(TimeSpan.FromMilliseconds(milliseconds));
-            _visibilityOpacity!.From = fromOpacity;
-            _visibilityOpacity.To = toOpacity;
-            _visibilityOpacity.Duration = duration;
-            _visibilityOffset!.From = fromOffset;
-            _visibilityOffset.To = toOffset;
-            _visibilityOffset.Duration = duration;
-            _visibilityStoryboard.Begin();
-        }
-
-        private static DoubleAnimation CreateDoubleAnimation(
-            DependencyObject target,
-            string property,
-            double from,
-            double to,
-            int milliseconds)
-        {
-            var animation = new DoubleAnimation
-            {
-                From = from,
-                To = to,
-                Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
-                EnableDependentAnimation = true,
-            };
-            Storyboard.SetTarget(animation, target);
-            Storyboard.SetTargetProperty(animation, property);
-            return animation;
-        }
 
         private void RenderRows()
         {
@@ -1202,7 +981,7 @@ namespace CodexQuota.Controls
                 return ResetDateDisplay.FormatLocalDate(resetWhen);
             if (string.IsNullOrWhiteSpace(row.ResetDescription))
                 return string.Empty;
-            return row.ResetDescription;
+            return AppStrings.LocalizeCountdown(row.ResetDescription);
         }
 
         private void AddToPanel(FrameworkElement element, int row, int column, int rowSpan = 1)
