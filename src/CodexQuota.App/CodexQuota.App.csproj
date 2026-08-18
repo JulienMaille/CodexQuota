@@ -27,7 +27,16 @@
     <CodexQuotaArchitecture Condition="'$(CodexQuotaArchitecture)' == ''">x64</CodexQuotaArchitecture>
     <!-- Loose .xbf beside the exe; required for unpackaged publish (embedded-only Release PRI was not copied). -->
     <DisableEmbeddedXbf>true</DisableEmbeddedXbf>
-    <PublishTrimmed>false</PublishTrimmed>
+    <!-- Partial trimming: official for WinUI 3 / CsWinRT since Windows App SDK 1.2
+         (microsoft/WindowsAppSDK#2478). Shrinks the trim-annotated .NET runtime and the
+         Microsoft.Windows.SDK.NET projection (~24 MB -> ~0.35 MB); the WinUI projections are
+         rooted below because their statics activation path could not be verified in this
+         environment (see TrimmerRootAssembly comment). -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- Trimming disables built-in COM interop by default (System.Runtime.InteropServices feature
+         switch); the taskbar wiring and UIAutomationClient scans are COM-based, so opt back in. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
 
@@ -86,6 +95,16 @@
     <InternalsVisibleTo Include="CodexQuota.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- CsWinRT statics (Microsoft.UI.Text.FontWeights) resolve through WinRT.ActivationFactory by
+         type name; trimming the projection risks stripping that metadata. Widget rendering
+         failed with 0x80040111 in the smoke environment for both trimmed and untrimmed builds
+         (an environment limitation, not a trim regression), so the WinUI projections stay
+         exactly as the released build ships them; keep trimming everything else. -->
+    <TrimmerRootAssembly Include="Microsoft.WinUI" />
+    <TrimmerRootAssembly Include="WinRT.Runtime" />
+  </ItemGroup>
+
   <!--
     The XAML compiler emits loose .xbf files as part of the build. They are not
     represented by project items, so collecting them during AssignTargetPaths
@@ -137,11 +156,15 @@
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Text.winmd" />
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.pri" />
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Controls.pri" />
+      <!-- Pruned despite a manifest entry: serves 31 legacy Phone-era classes (PivotAutomationPeer
+           et al.) this app never instantiates; render path verified by boot test. -->
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Phone.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Internal.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Designer.dll" />
       <!-- Keep Microsoft.ui.xaml.resources.common.dll: the NumberBox spin template ships there. -->
       <_PruneFiles Include="$(PublishDir)DwmSceneI.dll" />
+      <!-- Pruned despite a manifest entry: serves only Microsoft.Graphics.Display.DisplayInformation;
+           the app uses Windows.Graphics.DisplayArea (OS projection, different type). -->
       <_PruneFiles Include="$(PublishDir)Microsoft.Graphics.Display.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Graphics.winmd" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Web.WebView2.Core.dll" />
@@ -154,6 +177,50 @@
       <_PruneFiles Include="$(PublishDir)Microsoft.Security.Authentication.OAuth.Projection.dll" />
       <_PruneFiles Include="$(PublishDir)Microsoft.Security.Authentication.OAuth.winmd" />
       <_PruneFiles Include="$(PublishDir)PushNotificationsLongRunningTask.ProxyStub.dll" />
+      <!-- Managed assemblies the app's runtime graph never references (verified: zero static
+           references from any shipped assembly in the publish directory; .NET loads managed
+           assemblies lazily, so unreferenced ones are dead weight copied unconditionally by
+           the self-contained runtime pack). -->
+      <_PruneFiles Include="$(PublishDir)System.Private.Xml.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Private.Xml.Linq.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Private.DataContractSerialization.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Data.Common.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Runtime.Serialization*.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.Mail.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.HttpListener.dll" />
+      <!-- NOT pruned: System.Net.Quic.dll + msquic.dll and System.Net.Sockets.dll — SocketsHttpHandler
+           probes QUIC dynamically at request time (no static reference); deleting them breaks every
+           usage fetch with FileNotFoundException. -->
+      <_PruneFiles Include="$(PublishDir)System.Net.WebClient.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.WebSockets.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.WebSockets.Client.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.Ping.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.WebProxy.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.ServicePoint.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Net.Requests.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Web.HttpUtility.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.CSharp.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.VisualBasic.dll" />
+      <_PruneFiles Include="$(PublishDir)Microsoft.VisualBasic.Core.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Transactions.dll" />
+      <_PruneFiles Include="$(PublishDir)System.Transactions.Local.dll" />
+      <!-- Kept: WinUIEdit.dll is the in-process activation server for
+           Microsoft.UI.Text.FontWeights/TextConstants (registered in the exe manifest);
+           the summary widget activates FontWeights during first render. -->
+      <!-- AppSDK control-string MUI satellites for languages the app does not localize. The app
+           ships resw for 10 languages; WinUI falls back to neutral resources for the rest. -->
+      <_PruneFiles Include="$(PublishDir)*\Microsoft.UI.Xaml.Phone.dll.mui" />
+      <_PruneFiles Include="$(PublishDir)*\Microsoft.ui.xaml.dll.mui"
+                   Exclude="$(PublishDir)en-us\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)fr-FR\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)es-ES\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)de-DE\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)pt-BR\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)it-IT\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)ja-JP\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)ko-KR\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)zh-CN\Microsoft.ui.xaml.dll.mui;
+                            $(PublishDir)ru-RU\Microsoft.ui.xaml.dll.mui" />
     </ItemGroup>
     <Message Importance="high" Text="Pruned @(_PruneFiles->Count()) unused publish files." />
     <Delete Files="@(_PruneFiles)" />

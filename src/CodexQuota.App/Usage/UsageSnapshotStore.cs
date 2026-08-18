@@ -20,11 +20,6 @@ namespace CodexQuota.Usage
         /// <summary>A restored snapshot older than this is discarded: quota windows have likely rolled.</summary>
         internal static readonly TimeSpan MaxRestoreAge = TimeSpan.FromHours(24);
 
-        private static readonly JsonSerializerOptions SerializerOptions = new()
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
-
         /// <summary>Default location; tests pass their own directory instead.</summary>
         public static string DefaultDirectory => AppStorage.AppDataDirectory;
 
@@ -43,7 +38,7 @@ namespace CodexQuota.Usage
                 if (!File.Exists(path))
                     return restored;
 
-                var file = JsonSerializer.Deserialize<StoredFile>(File.ReadAllText(path), SerializerOptions);
+                var file = JsonSerializer.Deserialize(File.ReadAllText(path), UsageSnapshotsJsonContext.Default.StoredFile);
                 if (file?.Entries is null)
                     return restored;
 
@@ -96,7 +91,7 @@ namespace CodexQuota.Usage
                     .ToList();
 
                 Directory.CreateDirectory(directory);
-                var json = JsonSerializer.Serialize(new StoredFile { Entries = entries }, SerializerOptions);
+                var json = JsonSerializer.Serialize(new StoredFile { Entries = entries }, UsageSnapshotsJsonContext.Default.StoredFile);
 
                 // Write through a temp file so a crash mid-write can't leave a truncated cache behind.
                 var path = FilePathIn(directory);
@@ -216,12 +211,12 @@ namespace CodexQuota.Usage
             return cost;
         }
 
-        private sealed class StoredFile
+        internal sealed class StoredFile
         {
             public List<StoredEntry>? Entries { get; set; }
         }
 
-        private sealed class StoredEntry
+        internal sealed class StoredEntry
         {
             public string? Provider { get; set; }
             public DateTimeOffset FetchedAt { get; set; }
@@ -235,7 +230,7 @@ namespace CodexQuota.Usage
             public StoredUsage? Usage { get; set; }
         }
 
-        private sealed class StoredUsage
+        internal sealed class StoredUsage
         {
             public StoredWindow? Primary { get; set; }
             public bool HasPrimaryWindow { get; set; } = true;
@@ -250,7 +245,7 @@ namespace CodexQuota.Usage
             public StoredResetCredits? ResetCredits { get; set; }
         }
 
-        private sealed class StoredWindow
+        internal sealed class StoredWindow
         {
             public double UsedPercent { get; set; }
             public int? WindowMinutes { get; set; }
@@ -260,14 +255,14 @@ namespace CodexQuota.Usage
             public bool ShowCostValue { get; set; }
         }
 
-        private sealed class StoredNamedWindow
+        internal sealed class StoredNamedWindow
         {
             public string? Id { get; set; }
             public string? Title { get; set; }
             public StoredWindow? Window { get; set; }
         }
 
-        private sealed class StoredCost
+        internal sealed class StoredCost
         {
             public double Amount { get; set; }
             public string? Currency { get; set; }
@@ -276,7 +271,7 @@ namespace CodexQuota.Usage
             public DateTimeOffset? ResetsAt { get; set; }
         }
 
-        private sealed class StoredAdditionalUsage
+        internal sealed class StoredAdditionalUsage
         {
             public bool Enabled { get; set; }
             public double SpentUsd { get; set; }
@@ -284,17 +279,26 @@ namespace CodexQuota.Usage
             public bool IsCredits { get; set; }
         }
 
-        private sealed class StoredResetCredits
+        internal sealed class StoredResetCredits
         {
             public int AvailableCount { get; set; }
             public List<StoredResetCredit>? Credits { get; set; }
         }
 
-        private sealed class StoredResetCredit
+        internal sealed class StoredResetCredit
         {
             public string? Status { get; set; }
             public DateTimeOffset? GrantedAt { get; set; }
             public DateTimeOffset? ExpiresAt { get; set; }
         }
+    }
+
+    /// <summary>Source-generated serializer for the persisted snapshot DTOs. Trimming disables the
+    /// reflection-based resolver, so this context is the only working path in trimmed publishes.
+    /// Mirrors the previous <c>SerializerOptions</c> exactly (<see cref="JsonIgnoreCondition.WhenWritingNull"/>).</summary>
+    [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonSerializable(typeof(UsageSnapshotStore.StoredFile))]
+    internal sealed partial class UsageSnapshotsJsonContext : JsonSerializerContext
+    {
     }
 }
