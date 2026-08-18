@@ -34,6 +34,17 @@
          environment (see TrimmerRootAssembly comment). -->
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
+    <!-- The WindowsAppSDK projections (Microsoft.Windows.SDK.NET.dll, WinRT.Runtime.dll) ship without
+         full trim annotations, so ILLink flags dozens of their members on every publish. They are
+         rooted anyway (TrimmerRootAssembly below) and the published exe is boot-smoke-tested; collapse
+         the per-member noise to one summarized warning per assembly. IL2026 (COM activation, from
+         BuiltInComInteropSupport) is a known limitation of built-in COM interop + trimming, kept as a
+         suppressed single line: the taskbar wiring is exercised at every boot. -->
+    <TrimmerSingleWarn>true</TrimmerSingleWarn>
+    <!-- IL2026 (COM activation, from BuiltInComInteropSupport) is a known limitation of built-in COM
+         interop + trimming; the taskbar wiring it feeds is exercised at every boot smoke test, so a
+         silent suppressed line beats a recurring alert. -->
+    <NoWarn>$(NoWarn);IL2026</NoWarn>
     <!-- Trimming disables built-in COM interop by default (System.Runtime.InteropServices feature
          switch); the taskbar wiring and UIAutomationClient scans are COM-based, so opt back in. -->
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
