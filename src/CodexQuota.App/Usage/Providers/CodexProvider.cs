@@ -32,6 +32,10 @@ namespace CodexQuota.Usage.Providers
         private static readonly TimeSpan ProfileTimeout = TimeSpan.FromSeconds(10);
         private static readonly Regex CodexModelPrefix = new(@"^GPT-[\d.]+-Codex-", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Same hint for the usage and profile endpoints so a re-login message can never diverge.
+        private const string AuthExpiredMessage =
+            "Codex sign-in expired: re-run `codex login` (Codex CLI) or update OPENAI_API_KEY in ~/.codex/auth.json.";
+
         private static readonly HttpClient Http = new(new HttpClientHandler())
         {
             Timeout = TimeSpan.FromSeconds(30),
@@ -51,7 +55,7 @@ namespace CodexQuota.Usage.Providers
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
 
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex token expired. Run `codex login`.");
+                throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 throw new ProviderException(ProviderErrorKind.RateLimited, "Codex API rate limit reached.");
 
@@ -164,7 +168,7 @@ namespace CodexQuota.Usage.Providers
                 using var response = await Http.SendAsync(request, timeout.Token).ConfigureAwait(false);
 
                 if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                    throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex token expired. Run `codex login`.");
+                    throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
                 if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     throw new ProviderException(ProviderErrorKind.RateLimited, "Codex profile API rate limit reached.");
 
@@ -547,7 +551,7 @@ namespace CodexQuota.Usage.Providers
         {
             var authPath = GetAuthPath();
             if (!File.Exists(authPath))
-                throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex auth.json not found. Run `codex login`.");
+                throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex sign-in not found: ~/.codex/auth.json is missing. Run `codex login` (Codex CLI) or add OPENAI_API_KEY to that file.");
 
             using var doc = JsonDocument.Parse(File.ReadAllText(authPath));
             var root = doc.RootElement;

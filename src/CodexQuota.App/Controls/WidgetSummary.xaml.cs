@@ -213,10 +213,14 @@ namespace CodexQuota.Controls
 
             if (!result.Ok || result.Fetch is null)
             {
+                // Unknown values: both rows use the same "--" marker with no bars, matching the
+                // first-paint placeholder. The previous rendering (full bar + "!" on the weekly line
+                // only) made the two unknown rows look inconsistent and read as invalid data (issue
+                // #21); the failure state is still distinguishable via the tooltip.
                 _rows = new()
                 {
-                    new WidgetUsageRow(CompactLabel(result.Provider?.SessionLabel ?? "Session"), 0, "--"),
-                    new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 100, "!"),
+                    new WidgetUsageRow(CompactLabel(result.Provider?.SessionLabel ?? "Session"), 0, "--", HasBar: false),
+                    new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 0, "--", HasBar: false),
                 };
                 RenderRows();
                 ToolTipService.SetToolTip(this, $"{widgetName}: {AppStrings.LocalizeStatus(result.Error, "Widget.Unavailable")}");
