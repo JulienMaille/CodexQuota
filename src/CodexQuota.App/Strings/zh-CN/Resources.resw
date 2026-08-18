@@ -4,7 +4,7 @@
   <data name="Ui.ShowHideAppearanceOptions" xml:space="preserve"><value>显示或隐藏外观选项</value></data>
   <data name="Ui.RefreshUsage" xml:space="preserve"><value>刷新用量</value></data>
   <data name="Ui.Close" xml:space="preserve"><value>关闭</value></data>
-  <data name="Ui.TokenActivity" xml:space="preserve"><value>令牌用量</value></data>
+  <data name="Ui.TokenActivity" xml:space="preserve"><value>Token 用量</value></data>
   <data name="Ui.Refreshing" xml:space="preserve"><value>正在刷新…</value></data>
   <data name="Ui.NoUsageDataYet" xml:space="preserve"><value>暂无使用数据。</value></data>
   <data name="Ui.LastUpdatedDash" xml:space="preserve"><value>最后更新 ·</value></data>
@@ -12,7 +12,7 @@
   <data name="Ui.ProfileAsOf" xml:space="preserve"><value>截至 {0}</value></data>
   <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>截至 {0} · 本地会话</value></data>
   <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>本地会话</value></data>
-  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} 个令牌</value></data>
+  <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} 个 token</value></data>
   <data name="Ui.ResetsOn" xml:space="preserve"><value>于 {0} 重置</value></data>
   <data name="Ui.ResetsIn" xml:space="preserve"><value>{0} 后重置</value></data>
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} 个重置额度</value></data>

@@ -13,8 +13,14 @@ namespace CodexQuota.Controls
     /// </summary>
     internal static class ProfileHeatmapLayout
     {
-        /// <summary>Number of week columns rendered; buckets older than this window are dropped.</summary>
-        public const int MaxWeeks = 12;
+        /// <summary>
+        /// Number of week columns rendered; buckets older than this window are dropped. Sized so the
+        /// grid fits the flyout's content width (~328px at 15px/column) without horizontal scrolling;
+        /// the profile endpoint itself typically returns ~8 weeks, so the chart's real depth past that
+        /// comes from local session journals (gap days within this window are filled by
+        /// <see cref="CodexUsagePanel"/>); the cap only truncates what neither source can supply.
+        /// </summary>
+        public const int MaxWeeks = 22;
 
         public readonly record struct DayCell(DateTimeOffset Day, long Tokens);
 

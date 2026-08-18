@@ -58,7 +58,7 @@ public class ProfileHeatmapLayoutTests
     public void Build_BucketOlderThanMaxWeeks_Dropped()
     {
         var latest = Bucket("2026-08-07", 100);
-        var ancient = Bucket("2026-05-01", 999); // > 12 weeks before the latest
+        var ancient = Bucket("2026-01-15", 999); // > 22 weeks before the latest
         var columns = ProfileHeatmapLayout.Build(new[] { ancient, latest }, new DateOnly(2026, 8, 7));
 
         Assert.Equal(ProfileHeatmapLayout.MaxWeeks, columns.Count);

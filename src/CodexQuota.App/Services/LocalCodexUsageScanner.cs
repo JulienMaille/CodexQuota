@@ -7,26 +7,40 @@ using System.Text.Json;
 namespace CodexQuota;
 
 /// <summary>
-/// Reads today's observed Codex token usage from the local session journal. The profile endpoint is
-/// intentionally retained as the source of truth for historical buckets; this scanner only fills the
-/// current UTC day when the server-side aggregation has not caught up yet.
+/// Reads Codex token usage from the local session journal. The profile endpoint is retained as the
+/// source of truth for historical buckets; journals fill days the server has not reported: today
+/// (server aggregation lags), and any gap days older than the server's window so the heatmap can show
+/// more than the ~8 weeks the endpoint returns.
 /// </summary>
 internal static class LocalCodexUsageScanner
 {
+    /// <summary>How long a range scan result is reused before the journals are re-read.</summary>
+    public static readonly TimeSpan CacheAge = TimeSpan.FromMinutes(10);
+
+    private static readonly object CacheLock = new();
+    private static DateOnly _cachedStart;
+    private static DateOnly _cachedEnd;
+    private static DateTimeOffset _cachedAtUtc;
+    private static IReadOnlyDictionary<DateOnly, long> _cachedRange = new Dictionary<DateOnly, long>();
+
     public static long ReadTodayTokens(DateOnly today, string? codexHome = null)
+        => ReadDayTokens(today, codexHome);
+
+    /// <summary>Tokens observed on a single day, including events of a session started the previous day.</summary>
+    public static long ReadDayTokens(DateOnly day, string? codexHome = null)
     {
         string home = ResolveCodexHome(codexHome);
         string sessionsRoot = Path.Combine(home, "sessions");
         long total = 0;
 
-        // A session can start before midnight and continue into today, so inspect both date folders.
-        foreach (var day in new[] { today.AddDays(-1), today })
+        // A session can start before midnight and continue into the day, so inspect both date folders.
+        foreach (var folderDay in new[] { day.AddDays(-1), day })
         {
             string directory = Path.Combine(
                 sessionsRoot,
-                day.ToString("yyyy", CultureInfo.InvariantCulture),
-                day.ToString("MM", CultureInfo.InvariantCulture),
-                day.ToString("dd", CultureInfo.InvariantCulture));
+                folderDay.ToString("yyyy", CultureInfo.InvariantCulture),
+                folderDay.ToString("MM", CultureInfo.InvariantCulture),
+                folderDay.ToString("dd", CultureInfo.InvariantCulture));
 
             IEnumerable<string> paths;
             try
@@ -43,13 +57,60 @@ internal static class LocalCodexUsageScanner
             }
 
             foreach (string path in paths)
-                total = SaturatingAdd(total, ReadFileTokens(path, today));
+                total = SaturatingAdd(total, ReadFileTokens(path, day));
         }
 
         return total;
     }
 
-    private static long ReadFileTokens(string path, DateOnly today)
+    /// <summary>Local tokens per day over [start, end] inclusive; days with no journal activity are absent.</summary>
+    public static IReadOnlyDictionary<DateOnly, long> ReadRangeTokens(
+        DateOnly start,
+        DateOnly end,
+        string? codexHome = null)
+    {
+        var result = new Dictionary<DateOnly, long>();
+        for (var day = start; day <= end; day = day.AddDays(1))
+        {
+            long tokens = ReadDayTokens(day, codexHome);
+            if (tokens > 0)
+                result[day] = tokens;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// <see cref="ReadRangeTokens"/> memoized for <see cref="CacheAge"/>: the flyout re-renders the
+    /// heatmap on every profile poll, and re-parsing the whole journal on each tick would be wasteful.
+    /// </summary>
+    public static IReadOnlyDictionary<DateOnly, long> ReadRangeTokensCached(
+        DateOnly start,
+        DateOnly end,
+        string? codexHome = null)
+    {
+        lock (CacheLock)
+        {
+            if (start == _cachedStart
+                && end == _cachedEnd
+                && DateTimeOffset.UtcNow - _cachedAtUtc <= CacheAge)
+            {
+                return _cachedRange;
+            }
+        }
+
+        var fresh = ReadRangeTokens(start, end, codexHome);
+        lock (CacheLock)
+        {
+            _cachedStart = start;
+            _cachedEnd = end;
+            _cachedAtUtc = DateTimeOffset.UtcNow;
+            _cachedRange = fresh;
+            return fresh;
+        }
+    }
+
+    private static long ReadFileTokens(string path, DateOnly targetDay)
     {
         long total = 0;
         long previousCumulative = 0;
@@ -82,7 +143,7 @@ internal static class LocalCodexUsageScanner
                             CultureInfo.InvariantCulture,
                             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                             out var timestamp)
-                        || DateOnly.FromDateTime(timestamp.UtcDateTime) != today
+                        || DateOnly.FromDateTime(timestamp.UtcDateTime) != targetDay
                         || !payload.TryGetProperty("info", out var info))
                     {
                         continue;

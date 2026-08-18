@@ -104,9 +104,16 @@
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
             </StackPanel>
-            <StackPanel x:Name="ActivityColumns"
-                        Orientation="Horizontal"
-                        Spacing="3"/>
+            <ScrollViewer HorizontalAlignment="Stretch"
+                          HorizontalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          VerticalScrollMode="Disabled"
+                          ZoomMode="Disabled">
+                <StackPanel x:Name="ActivityColumns"
+                            Orientation="Horizontal"
+                            Spacing="3"/>
+            </ScrollViewer>
             <TextBlock x:Name="ActivityDetailText"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{StaticResource CaptionTextBlockStyle}"

@@ -151,7 +151,7 @@ namespace CodexQuota.Controls
                 ? AppStrings.Format(profile.TodayUsageIsLocal ? "Ui.ProfileAsOfLive" : "Ui.ProfileAsOf", asOf)
                 : profile.TodayUsageIsLocal ? AppStrings.Get("Ui.LiveLocalSessions") : string.Empty;
 
-            var columns = ProfileHeatmapLayout.Build(profile.DailyUsageBuckets);
+            var columns = ProfileHeatmapLayout.Build(MergeLocalHistory(profile.DailyUsageBuckets));
             var next = new List<UIElement>(columns.Count);
 
             long maxTokens = 0;
@@ -207,6 +207,47 @@ namespace CodexQuota.Controls
         }
 
         private string DefaultDetailLabel = string.Empty;
+
+        /// <summary>
+        /// Server buckets plus local journal days the server has not reported yet (the endpoint's
+        /// window is ~8 weeks; journals reach back further and also cover the current day before the
+        /// server aggregation catches up). Server values stay authoritative where both exist.
+        /// </summary>
+        private static IReadOnlyList<ProfileUsageBucket> MergeLocalHistory(
+            IReadOnlyList<ProfileUsageBucket> server)
+        {
+            var serverByDay = new Dictionary<DateOnly, long>();
+            foreach (var bucket in server)
+            {
+                if (DateOnly.TryParse(
+                        bucket.StartDate,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var day))
+                {
+                    serverByDay[day] = bucket.Tokens;
+                }
+            }
+
+            // A superset of the grid window (Build anchors to the containing week's Sunday): scanning
+            // slightly wider costs nothing and cannot drop the first rendered column.
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+            var windowStart = today.AddDays(-(ProfileHeatmapLayout.MaxWeeks + 1) * 7);
+
+            var merged = new List<ProfileUsageBucket>(server.Count + 16);
+            merged.AddRange(server);
+            foreach (var (day, tokens) in LocalCodexUsageScanner.ReadRangeTokensCached(windowStart, today))
+            {
+                if (!serverByDay.ContainsKey(day))
+                {
+                    merged.Add(new ProfileUsageBucket(
+                        day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        tokens));
+                }
+            }
+
+            return merged;
+        }
 
         private static string DetailLabel(ProfileHeatmapLayout.DayCell cell) =>
             AppStrings.Format(
