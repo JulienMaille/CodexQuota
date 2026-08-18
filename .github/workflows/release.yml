@@ -73,7 +73,11 @@ jobs:
           $parts = $semver.Split('.', [StringSplitOptions]::RemoveEmptyEntries)
           while ($parts.Count -lt 3) { $parts += '0' }
           $assemblyVersion = "$($parts[0]).$($parts[1]).$($parts[2]).0"
-          $applicationVersion = [int]$parts[2]
+          # Manual dispatches fall back to a date-based semver (e.g. 2026.08.18-manual) whose patch
+          # segment is not numeric; only tag runs carry a plain patch, so coerce non-numeric to 0.
+          $patch = $parts[2]
+          if ($patch -notmatch '^\d+$') { $patch = '0' }
+          $applicationVersion = [int]$patch
           $targets = @(
             @{ Platform = 'x64'; Rid = 'win-x64'; Arch = 'x64' },
             @{ Platform = 'ARM64'; Rid = 'win-arm64'; Arch = 'arm64' }
