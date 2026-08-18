@@ -43,7 +43,9 @@ jobs:
           if ($env:GITHUB_REF -match 'refs/tags/(v.+)$') {
             $tag = $Matches[1]
           } else {
-            $tag = "v$((Get-Date -Format 'yyyy.MM.dd'))-manual"
+            # Date-based, numeric only: the semver flows into -p:Version and must be a valid
+            # .NET version string (CS7034 otherwise). No release is published on dispatch anyway.
+            $tag = "v$((Get-Date -Format 'yyyy.MM.dd'))"
           }
 
           $semver = $tag.TrimStart('v')
