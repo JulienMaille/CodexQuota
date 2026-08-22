@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0}개의 리셋 크레딧</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>가장 오래된 항목 {0}에 만료</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>가장 오래된 항목 {0} 후 만료</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>{0}에 만료</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>{0} 후 만료</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0}개의 리셋 크레딧</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>마지막 업데이트 {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>마지막 업데이트 {0} (오래됨)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 새로 고치는 중…</value></data>

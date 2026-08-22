@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} 个重置额度</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>于 {0} 到期</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>{0} 后到期</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} 个重置额度</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>最后更新 {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>最后更新 {0}（数据已过期）</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 正在刷新…</value></data>

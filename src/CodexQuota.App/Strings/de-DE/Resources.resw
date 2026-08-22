@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} Zurücksetzungsguthaben</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>ältestes läuft am {0} ab</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>ältestes läuft in {0} ab</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>läuft am {0} ab</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>läuft in {0} ab</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} Zurücksetzungsguthaben</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Zuletzt aktualisiert {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Zuletzt aktualisiert {0} (veraltet)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · wird aktualisiert…</value></data>

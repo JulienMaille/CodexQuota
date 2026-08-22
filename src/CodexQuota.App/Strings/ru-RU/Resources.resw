@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} кредитов на сброс</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>раньше всего истекает {0}</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>раньше всего истекает через {0}</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>истекает {0}</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>истекает через {0}</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} кредит на сброс</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Обновлено {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Обновлено {0} (устарело)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · обновление…</value></data>

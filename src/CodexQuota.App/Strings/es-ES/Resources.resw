@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} créditos de reinicio</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>el más antiguo caduca el {0}</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>el más antiguo caduca en {0}</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>caduca el {0}</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>caduca en {0}</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} crédito de reinicio</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Última actualización {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Última actualización {0} (obsoleta)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · actualizando…</value></data>

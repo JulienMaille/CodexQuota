@@ -462,7 +462,7 @@ namespace CodexQuota.Controls
             var line = new TextBlock
             {
                 Text = AppStrings.Format(
-                    "Ui.ResetCreditsCount",
+                    resetCredits.AvailableCount == 1 ? "Ui.ResetCreditCountOne" : "Ui.ResetCreditsCount",
                     resetCredits.AvailableCount.ToString("N0", CultureInfo.CurrentUICulture)),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
@@ -473,8 +473,8 @@ namespace CodexQuota.Controls
                 // only earns its space when several credits compete for the nearest expiry.
                 bool single = resetCredits.AvailableCount == 1;
                 line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
-                    ? $" · {AppStrings.Format(single ? "Ui.ResetsOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
-                    : $" · {AppStrings.Format(single ? "Ui.ResetsIn" : "Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
+                    ? $" · {AppStrings.Format(single ? "Ui.ExpiresOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
+                    : $" · {AppStrings.Format(single ? "Ui.ExpiresIn" : "Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
             }
             rows.Add(line);
         }

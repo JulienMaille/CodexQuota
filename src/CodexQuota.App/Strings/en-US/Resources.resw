@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} reset credits</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>oldest expires {0}</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>oldest expires in {0}</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>expires {0}</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>expires in {0}</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} reset credit</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Last updated {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Last updated {0} (stale)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · refreshing…</value></data>

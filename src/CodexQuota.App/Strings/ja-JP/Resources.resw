@@ -18,6 +18,9 @@
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0}件のリセットクレジット</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>最も古いものは{0}に期限切れ</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>最も古いものは{0}後に期限切れ</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>{0}に期限切れ</value></data>
+  <data name="Ui.ExpiresIn" xml:space="preserve"><value>{0}後に期限切れ</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0}件のリセットクレジット</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>最終更新 {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>最終更新 {0}（古いデータ）</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 更新中…</value></data>
