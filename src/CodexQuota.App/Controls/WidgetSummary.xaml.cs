@@ -333,7 +333,8 @@ namespace CodexQuota.Controls
                     resetCredits.AvailableCount.ToString("N0", CultureInfo.InvariantCulture),
                     CountdownFormat.Format(resetCredits.EarliestExpiresAt),
                     HasBar: false,
-                    ResetAt: resetCredits.EarliestExpiresAt));
+                    ResetAt: resetCredits.EarliestExpiresAt,
+                    SingleReset: resetCredits.AvailableCount == 1));
             }
             rows.AddRange(usage.ExtraRateWindows.Select(w => new WidgetUsageRow(
                 CompactLabel(w.Title),
@@ -509,8 +510,7 @@ namespace CodexQuota.Controls
                 return $"{label}: {row.Value}";
 
             string? dateForm = imminent && row.ResetAt is { } resetWhen ? ResetDateDisplay.FormatLocalDate(resetWhen) : null;
-
-            if (row.Label == "Resets")
+            if (row.Label == "Resets" && !row.SingleReset)
             {
                 string expiry = dateForm is not null
                     ? AppStrings.Format("Widget.OldestExpiresOn", dateForm)
@@ -613,7 +613,8 @@ namespace CodexQuota.Controls
             string? ResetDescription = null,
             bool HasBar = true,
             string? GlyphData = null,
-            DateTimeOffset? ResetAt = null);
+            DateTimeOffset? ResetAt = null,
+            bool SingleReset = false);
 
         private sealed record RenderedRow(
             WidgetUsageRow Source,

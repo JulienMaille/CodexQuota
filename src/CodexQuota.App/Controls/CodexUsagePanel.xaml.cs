@@ -468,9 +468,14 @@ namespace CodexQuota.Controls
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             };
             if (resetCredits.EarliestExpiresAt is { } expires)
+            {
+                // With a single credit there is nothing to disambiguate: the "oldest" qualifier
+                // only earns its space when several credits compete for the nearest expiry.
+                bool single = resetCredits.AvailableCount == 1;
                 line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
-                    ? $" · {AppStrings.Format("Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
-                    : $" · {AppStrings.Format("Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
+                    ? $" · {AppStrings.Format(single ? "Ui.ResetsOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
+                    : $" · {AppStrings.Format(single ? "Ui.ResetsIn" : "Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
+            }
             rows.Add(line);
         }
 
