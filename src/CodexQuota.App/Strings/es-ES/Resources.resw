@@ -35,6 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Precaución (naranja) por debajo de este porcentaje restante</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Crítico (rojo) por debajo de este porcentaje restante</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Horas de programación estimadas en cada día de cuota de 24 horas</value></data>
+  <data name="Ui.ImminentHours" xml:space="preserve"><value>Fecha absoluta dentro de</value></data>
+  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Muestra la fecha local en lugar de la cuenta atrás cuando un reinicio está a menos de estas horas (0 = siempre cuenta atrás)</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Sesión</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>Semanal</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>Mensual</value></data>

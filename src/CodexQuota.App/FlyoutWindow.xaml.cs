@@ -88,6 +88,7 @@ namespace CodexQuota
             WarnUpperBox.Value = WidgetAppearanceSettings.WarningUpperPercent;
             WarnLowerBox.Value = WidgetAppearanceSettings.WarningLowerPercent;
             WorkdayHoursBox.Value = PaceSettings.WorkdayHours;
+            ImminentHoursBox.Value = ResetDateDisplay.ImminentWindowHours;
 
             // Keep the panel in sync with every coordinator publish while open.
             UsageCoordinator.Instance.StateChanged += OnStateChanged;
@@ -124,6 +125,8 @@ namespace CodexQuota
             ToolTipService.SetToolTip(WarnLowerBox, AppStrings.Get("Ui.CriticalTooltip"));
             WorkdayHoursText.Text = AppStrings.Get("Ui.WorkdayHours");
             ToolTipService.SetToolTip(WorkdayHoursBox, AppStrings.Get("Ui.WorkdayHoursTooltip"));
+            ImminentHoursText.Text = AppStrings.Get("Ui.ImminentHours");
+            ToolTipService.SetToolTip(ImminentHoursBox, AppStrings.Get("Ui.ImminentHoursTooltip"));
         }
 
         private void ToggleAppearanceSection()
@@ -266,6 +269,19 @@ namespace CodexQuota
 
             PaceSettings.WorkdayHours = value;
             WorkdayHoursBox.Value = PaceSettings.WorkdayHours;
+        }
+
+        private void ImminentHoursBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+        {
+            if (double.IsNaN(args.NewValue))
+                return;
+
+            int value = (int)Math.Round(args.NewValue);
+            if (value == ResetDateDisplay.ImminentWindowHours)
+                return;
+
+            ResetDateDisplay.ImminentWindowHours = value;
+            ImminentHoursBox.Value = ResetDateDisplay.ImminentWindowHours;
         }
 
         // The panel renders the same remaining percent with the same urgency colors, so a toggle while

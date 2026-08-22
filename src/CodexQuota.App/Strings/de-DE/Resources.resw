@@ -35,6 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Achtung (orange) unter diesem verbleibenden Prozentsatz</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Kritisch (rot) unter diesem verbleibenden Prozentsatz</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Angenommene Programmierstunden pro 24-Stunden-Kontingent-Tag</value></data>
+  <data name="Ui.ImminentHours" xml:space="preserve"><value>Absolutes Datum ab</value></data>
+  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Zeigt das lokale Datum statt eines Countdowns, wenn ein Reset näher als diese Stundenzahl liegt (0 = immer Countdown)</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Sitzung</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>Wöchentlich</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>Monatlich</value></data>

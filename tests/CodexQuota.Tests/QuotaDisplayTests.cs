@@ -105,21 +105,30 @@ public class QuotaDisplayTests
     public void ResetBeyondTheWindowShowsCountdown()
     {
         var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
-        Assert.False(ResetDateDisplay.IsImminent(now.AddHours(24).AddMinutes(1), now));
+        Assert.False(ResetDateDisplay.IsImminent(now.AddHours(24).AddMinutes(1), now, TimeSpan.FromHours(24)));
     }
 
     [Fact]
     public void ResetInsideTheImminentWindowShowsTheDate()
     {
         var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
-        Assert.True(ResetDateDisplay.IsImminent(now.AddHours(23), now));
+        Assert.True(ResetDateDisplay.IsImminent(now.AddHours(23), now, TimeSpan.FromHours(24)));
     }
 
     [Fact]
     public void PastResetIsNotImminent()
     {
         var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
-        Assert.False(ResetDateDisplay.IsImminent(now.AddHours(-1), now));
+        Assert.False(ResetDateDisplay.IsImminent(now.AddHours(-1), now, TimeSpan.FromHours(24)));
+    }
+
+    [Fact]
+    public void CustomWindowOverridesTheDefault()
+    {
+        var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
+        // A wider window pulls far resets into date form; a narrower one keeps countdowns.
+        Assert.True(ResetDateDisplay.IsImminent(now.AddHours(30), now, TimeSpan.FromHours(48)));
+        Assert.False(ResetDateDisplay.IsImminent(now.AddHours(2), now, TimeSpan.FromHours(1)));
     }
 
     [Fact]

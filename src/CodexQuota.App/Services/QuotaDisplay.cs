@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Microsoft.Win32;
 
 namespace CodexQuota;
 
@@ -45,18 +46,56 @@ public static class QuotaDisplay
 
 /// <summary>
 /// Decides whether a reset countdown is close enough that the tile should show the concrete date
-/// instead of "23h" — a reset "about to expire" is within 24 hours.
+/// instead of "23h". The switch-over threshold is user-configurable in the flyout settings.
 /// </summary>
 public static class ResetDateDisplay
 {
-    /// <summary>Resets closer than this render as the absolute local date.</summary>
-    public static readonly TimeSpan ImminentWindow = TimeSpan.FromHours(24);
+    private const string KeyPath = @"Software\CodexQuota";
+    private const string ImminentWindowValueName = "ImminentWindowHours";
 
-    /// <summary>True when <paramref name="resetAt"/> is in the future and within the imminent window.</summary>
-    public static bool IsImminent(DateTimeOffset? resetAt, DateTimeOffset now)
-        => resetAt is { } when && when > now && when - now <= ImminentWindow;
+    /// <summary>Default hours ahead at which a reset switches from countdown to absolute date.</summary>
+    public const int DefaultImminentWindowHours = 24;
+
+    /// <summary>Resets closer than this render as the absolute local date; clamped to one week so
+    /// countdowns stay meaningful. Persisted in HKCU\Software\CodexQuota like other settings.</summary>
+    public static TimeSpan ImminentWindow => TimeSpan.FromHours(ImminentWindowHours);
+
+    public static int ImminentWindowHours
+    {
+        get => Math.Clamp(ReadInt(ImminentWindowValueName, DefaultImminentWindowHours), 0, 168);
+        set
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
+                key?.SetValue(ImminentWindowValueName, Math.Clamp(value, 0, 168), RegistryValueKind.DWord);
+            }
+            catch
+            {
+                // Settings are best-effort; the default remains effective when the registry is unavailable.
+            }
+        }
+    }
+
+    /// <summary>True when <paramref name="resetAt"/> is in the future and within the imminent window.
+    /// Pass an explicit <paramref name="window"/> to bypass the persisted setting (deterministic tests).</summary>
+    public static bool IsImminent(DateTimeOffset? resetAt, DateTimeOffset now, TimeSpan? window = null)
+        => resetAt is { } when && when > now && when - now <= (window ?? ImminentWindow);
 
     /// <summary>Short local date-time in the user's UI culture, e.g. "13 août 21:28".</summary>
     public static string FormatLocalDate(DateTimeOffset when)
         => when.ToLocalTime().ToString("d MMM HH:mm", CultureInfo.CurrentUICulture);
+
+    private static int ReadInt(string name, int defaultValue)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
+            return key?.GetValue(name) is int value ? value : defaultValue;
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
 }

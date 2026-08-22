@@ -114,6 +114,24 @@
                            ValueChanged="WorkdayHoursBox_ValueChanged"
                            ToolTipService.ToolTip="Assumed coding hours in each 24-hour quota day"/>
             </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Left">
+                <TextBlock x:Name="ImminentHoursText"
+                           Text="Absolute date within"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                <NumberBox x:Name="ImminentHoursBox"
+                           Value="24"
+                           Minimum="0"
+                           Maximum="168"
+                           SmallChange="1"
+                           Width="64"
+                           SpinButtonPlacementMode="Compact"
+                           ValueChanged="ImminentHoursBox_ValueChanged"
+                           ToolTipService.ToolTip="Show the local date instead of a countdown when a reset is closer than this many hours (0 = always count down)"/>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>
