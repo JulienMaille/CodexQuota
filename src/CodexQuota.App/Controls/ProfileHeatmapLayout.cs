@@ -7,8 +7,8 @@ namespace CodexQuota.Controls
 {
     /// <summary>
     /// Lays out the Profile endpoint's daily token buckets as a GitHub-style activity grid:
-    /// a fixed window of week columns ending at the current week, seven rows (Sunday on top), each
-    /// cell a single day's tokens with zero-filled gaps. Pure data mapping so the flyout renderer
+    /// a fixed window of week columns ending at the current week, seven rows (Monday on top),
+    /// each cell a single day's tokens with zero-filled gaps. Pure data mapping so the flyout renderer
     /// stays a dumb painter.
     /// </summary>
     internal static class ProfileHeatmapLayout
@@ -39,15 +39,15 @@ namespace CodexQuota.Controls
             }
 
             var columns = new List<IReadOnlyList<DayCell>>(MaxWeeks);
-            DateOnly lastWeekSunday = lastDay.AddDays(-(int)lastDay.DayOfWeek); // Sunday=0
-            DateOnly firstWeekSunday = lastWeekSunday.AddDays(-(MaxWeeks - 1) * 7);
+            DateOnly lastWeekMonday = lastDay.AddDays(-(((int)lastDay.DayOfWeek + 6) % 7)); // Monday=0
+            DateOnly firstWeekMonday = lastWeekMonday.AddDays(-(MaxWeeks - 1) * 7);
 
             for (int w = 0; w < MaxWeeks; w++)
             {
                 var column = new List<DayCell>(7);
                 for (int i = 0; i < 7; i++)
                 {
-                    var day = firstWeekSunday.AddDays(w * 7 + i);
+                    var day = firstWeekMonday.AddDays(w * 7 + i);
                     if (day > lastDay)
                         break; // trailing partial week
                     column.Add(new DayCell(

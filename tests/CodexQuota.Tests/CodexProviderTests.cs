@@ -19,24 +19,22 @@ public class ProfileHeatmapLayoutTests
     }
 
     [Fact]
-    public void Build_SpanningSundayToSaturday_AlignsColumnsOnSundays()
+    public void Build_SpanningMondayToSunday_AlignsColumnsOnMondays()
     {
-        // 2026-08-03 is a Monday (synthetic test data); the window ends on Saturday 2026-08-08 so the
-        // containing week (starting Sunday 2026-08-02) renders in full.
+        // 2026-08-03 is a Monday (synthetic test data); the window ends on Sunday 2026-08-09 so the
+        // containing week (starting Monday 2026-08-03) renders in full.
         var buckets = new[]
         {
             Bucket("2026-08-03", 1000),
         };
-        var columns = ProfileHeatmapLayout.Build(buckets, new DateOnly(2026, 8, 8));
+        var columns = ProfileHeatmapLayout.Build(buckets, new DateOnly(2026, 8, 9));
 
-        // The window is anchored to the containing week's Sunday.
+        // The window is anchored to the containing week's Monday (row order: Monday on top).
         var last = columns[^1];
-        Assert.Equal("2026-08-02", last[0].Day.ToString("yyyy-MM-dd"));
-        Assert.Equal(0, last[0].Tokens);
-        Assert.Equal(1000, last[1].Tokens);
+        Assert.Equal("2026-08-03", last[0].Day.ToString("yyyy-MM-dd"));
+        Assert.Equal(1000, last[0].Tokens);
         Assert.Equal(7, last.Count);
     }
-
     [Fact]
     public void Build_TwoAdjacentWeeks_ZeroFillsMissingDays()
     {
@@ -48,10 +46,10 @@ public class ProfileHeatmapLayoutTests
         var columns = ProfileHeatmapLayout.Build(buckets, new DateOnly(2026, 8, 15));
 
         Assert.Equal(ProfileHeatmapLayout.MaxWeeks, columns.Count);
-        Assert.Equal(1000, columns[^2][1].Tokens);
-        Assert.Equal(500, columns[^1][1].Tokens);
-        Assert.Equal(0, columns[^2][2].Tokens);   // Tuesday week 1: missing bucket
-        Assert.Equal(0, columns[^1][6].Tokens);   // Saturday week 2 (window end): missing bucket
+        Assert.Equal(1000, columns[^2][0].Tokens);   // Monday of week 1
+        Assert.Equal(500, columns[^1][0].Tokens);    // Monday of week 2
+        Assert.Equal(0, columns[^2][1].Tokens);      // Tuesday of week 1: missing bucket
+        Assert.Equal(0, columns[^1][5].Tokens);      // Saturday of week 2 (window end): missing bucket
     }
 
     [Fact]
@@ -74,14 +72,14 @@ public class ProfileHeatmapLayoutTests
         var columns = ProfileHeatmapLayout.Build(buckets, new DateOnly(2026, 8, 3));
 
         Assert.Equal(ProfileHeatmapLayout.MaxWeeks, columns.Count);
-        Assert.Equal(42, columns[^1][1].Tokens);
+        Assert.Equal(42, columns[^1][0].Tokens);     // 2026-08-03 is its week's Monday (first row)
     }
 
     [Fact]
     public void Build_PartialEndWeek_StopsAtEndDay()
     {
-        // End day is Wednesday; the trailing column must contain only Sunday..Wednesday.
-        var columns = ProfileHeatmapLayout.Build(Array.Empty<ProfileUsageBucket>(), new DateOnly(2026, 8, 5));
+        // End day is Thursday; the trailing column must contain only Monday..Thursday.
+        var columns = ProfileHeatmapLayout.Build(Array.Empty<ProfileUsageBucket>(), new DateOnly(2026, 8, 6));
 
         Assert.Equal(ProfileHeatmapLayout.MaxWeeks, columns.Count);
         Assert.Equal(4, columns[^1].Count);

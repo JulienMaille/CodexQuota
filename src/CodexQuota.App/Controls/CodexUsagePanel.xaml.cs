@@ -162,6 +162,11 @@ namespace CodexQuota.Controls
 
             var accent = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
             var quiet = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"];
+            // Hover outline must read against every fill intensity, including full accent — so it
+            // runs counter to the theme (light line on light app theme), like the bars' threshold
+            // ticks.
+            var hoverOutline = new SolidColorBrush(
+                CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? Colors.White : Colors.Black);
 
             foreach (var column in columns)
             {
@@ -174,6 +179,7 @@ namespace CodexQuota.Controls
                         Height = 12,
                         CornerRadius = new CornerRadius(2),
                         Background = quiet,
+                        BorderThickness = new Thickness(0),
                     };
 
                     if (cell.Tokens > 0)
@@ -185,11 +191,22 @@ namespace CodexQuota.Controls
                         square.Opacity = 0.25 + 0.75 * intensity;
                     }
 
-                    // Hovering a square shows the exact day + tokens in the caption below the grid;
-                    // a 12px square cannot carry the text itself. Use the full localized weekday
-                    // and month because this is the readable history detail, not the compact grid.
-                    square.PointerEntered += (_, _) => ActivityDetailText.Text = DetailLabel(cell);
-                    square.PointerExited += (_, _) => ActivityDetailText.Text = DefaultDetailLabel;
+                    // Hover feedback: a 1px outline drawn inside the cell's own bounds (a scale
+                    // transform would overflow the 12px slot and clip at the grid edges), and the
+                    // exact day + tokens appear in the caption below — a 12px square cannot carry
+                    // that text itself. Use the full localized weekday and month because this is
+                    // the readable history detail, not the compact grid.
+                    square.PointerEntered += (_, _) =>
+                    {
+                        ActivityDetailText.Text = DetailLabel(cell);
+                        square.BorderBrush = hoverOutline;
+                        square.BorderThickness = new Thickness(1);
+                    };
+                    square.PointerExited += (_, _) =>
+                    {
+                        ActivityDetailText.Text = DefaultDetailLabel;
+                        square.BorderThickness = new Thickness(0);
+                    };
                     week.Children.Add(square);
                 }
 
@@ -228,8 +245,7 @@ namespace CodexQuota.Controls
                     serverByDay[day] = bucket.Tokens;
                 }
             }
-
-            // A superset of the grid window (Build anchors to the containing week's Sunday): scanning
+            // A superset of the grid window (Build anchors to the containing week's Monday): scanning
             // slightly wider costs nothing and cannot drop the first rendered column.
             var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
             var windowStart = today.AddDays(-(ProfileHeatmapLayout.MaxWeeks + 1) * 7);
