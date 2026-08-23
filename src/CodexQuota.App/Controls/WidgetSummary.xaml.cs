@@ -1007,13 +1007,17 @@ namespace CodexQuota.Controls
         private static void SetBar(FrameworkElement bar, double remainingPercent, double maxWidth)
         {
             bar.Width = Math.Clamp(remainingPercent, 0, 100) * (maxWidth / 100d);
-            string key = GetRemainingBrushResourceKey(remainingPercent);
-            if (bar is Border border)
-            {
-                bool emphasized = remainingPercent <= WidgetAppearanceSettings.WarningUpperPercent;
-                border.Background = (Brush)Application.Current.Resources[key];
-                border.Opacity = emphasized ? 0.95 : 0.78;
-            }
+            if (bar is not Border border)
+                return;
+
+            // Urgency fill only when color coding is on, matching the percent text and the flyout's
+            // bars; plain accent otherwise. Opacity is reset because SetBars re-runs on every render
+            // and a stale 0.78 would linger after the toggle flips off.
+            string key = WidgetAppearanceSettings.ColorCodeText
+                ? GetRemainingBrushResourceKey(remainingPercent)
+                : "AccentFillColorDefaultBrush";
+            border.Background = (Brush)Application.Current.Resources[key];
+            border.Opacity = 1;
         }
 
         private static string Abbrev(string name)

@@ -333,13 +333,17 @@ namespace CodexQuota.Controls
             if (pace is null)
                 return;
 
-            rows.Add(new TextBlock
+            var paceText = new TextBlock
             {
                 Text = AppStrings.FormatPace(pace),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(pace.RemainingPercent)],
                 TextTrimming = TextTrimming.CharacterEllipsis,
-            });
+            };
+            // The pace caption shares the urgency treatment of the percent it predicts; without the
+            // color option it keeps the plain caption look.
+            if (WidgetAppearanceSettings.ColorCodeText)
+                paceText.Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(pace.RemainingPercent)];
+            rows.Add(paceText);
         }
 
         private void AddMeterRow(List<UIElement> rows, string label, double usedPercent, DateTimeOffset? resetAt, string? resetDescription)
@@ -390,13 +394,13 @@ namespace CodexQuota.Controls
             {
                 Text = FormatPercent(remainingPercent),
                 Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            // Optional urgency coloring of the remaining percent (default white, amber ≤ upper
-            // threshold, red ≤ lower threshold).
-            if (WidgetAppearanceSettings.ColorCodeText)
+            // Optional urgency coloring of the remaining percent: amber at or below the upper
+            // threshold, red at or below the lower one. Above the upper threshold the text keeps its
+            // default look exactly, so enabling the option never shifts a healthy percent's color.
+            if (WidgetAppearanceSettings.ColorCodeText && remainingPercent <= WidgetAppearanceSettings.WarningUpperPercent)
                 valueBox.Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(remainingPercent)];
             Grid.SetColumn(valueBox, 1);
             row.Children.Add(valueBox);
@@ -496,9 +500,14 @@ namespace CodexQuota.Controls
             Grid.SetColumnSpan(track, 2);
             host.Children.Add(track);
 
+            // Fill matches the percent's urgency coloring when the color option is on; accent
+            // otherwise. Same rule as the taskbar tile so both surfaces agree.
+            string fillKey = WidgetAppearanceSettings.ColorCodeText
+                ? QuotaDisplay.BrushKeyForRemaining(fillPercent)
+                : "AccentFillColorDefaultBrush";
             host.Children.Add(new Border
             {
-                Background = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"],
+                Background = (Brush)Application.Current.Resources[fillKey],
                 CornerRadius = new CornerRadius(2),
             });
 
