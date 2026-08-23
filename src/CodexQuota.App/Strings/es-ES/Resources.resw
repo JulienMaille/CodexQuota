@@ -13,12 +13,12 @@
   <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>a fecha de {0} · sesiones locales</value></data>
   <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>sesiones locales</value></data>
   <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} tokens</value></data>
-  <data name="Ui.ResetsOn" xml:space="preserve"><value>se reinicia el {0}</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>se reinicia a las {0}</value></data>
   <data name="Ui.ResetsIn" xml:space="preserve"><value>se reinicia en {0}</value></data>
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} créditos de reinicio</value></data>
-  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>el más antiguo caduca el {0}</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>el más antiguo caduca a las {0}</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>el más antiguo caduca en {0}</value></data>
-  <data name="Ui.ExpiresOn" xml:space="preserve"><value>caduca el {0}</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>caduca a las {0}</value></data>
   <data name="Ui.ExpiresIn" xml:space="preserve"><value>caduca en {0}</value></data>
   <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} crédito de reinicio</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Última actualización {0}</value></data>
@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Precaución (naranja) por debajo de este porcentaje restante</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Crítico (rojo) por debajo de este porcentaje restante</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Horas de programación estimadas en cada día de cuota de 24 horas</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>Fecha absoluta dentro de</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Muestra la fecha local en lugar de la cuenta atrás cuando un reinicio está a menos de estas horas (0 = siempre cuenta atrás)</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>Hora exacta</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>A menos de 24 horas de un reinicio, muestra la hora local exacta en lugar de la cuenta atrás</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Sesión</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>Semanal</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>Mensual</value></data>

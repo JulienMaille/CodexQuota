@@ -81,6 +81,7 @@ namespace CodexQuota
             ShowIconCheck.IsChecked = WidgetAppearanceSettings.ShowIcon;
             ShowProgressBarCheck.IsChecked = WidgetAppearanceSettings.ShowProgressBar;
             ColorCodeTextCheck.IsChecked = WidgetAppearanceSettings.ColorCodeText;
+            ImminentCheck.IsChecked = WidgetAppearanceSettings.ShowImminentDate;
             _initializingAppearance = false;
 
             // Threshold boxes: setting Value fires ValueChanged, but the handler's equality check
@@ -88,7 +89,6 @@ namespace CodexQuota
             WarnUpperBox.Value = WidgetAppearanceSettings.WarningUpperPercent;
             WarnLowerBox.Value = WidgetAppearanceSettings.WarningLowerPercent;
             WorkdayHoursBox.Value = PaceSettings.WorkdayHours;
-            ImminentHoursBox.Value = ResetDateDisplay.ImminentWindowHours;
 
             // Keep the panel in sync with every coordinator publish while open.
             UsageCoordinator.Instance.StateChanged += OnStateChanged;
@@ -116,6 +116,7 @@ namespace CodexQuota
             ShowIconCheck.Content = AppStrings.Get("Ui.AppearanceIcon");
             ShowProgressBarCheck.Content = AppStrings.Get("Ui.AppearanceBars");
             ColorCodeTextCheck.Content = AppStrings.Get("Ui.AppearanceColorPercent");
+            ImminentCheck.Content = AppStrings.Get("Ui.AppearanceImminentTime");
             WarnBelowText.Text = AppStrings.Get("Ui.WarnBelowPercent");
 
             ToolTipService.SetToolTip(ShowIconCheck, AppStrings.Get("Ui.ShowBadgeTooltip"));
@@ -125,8 +126,7 @@ namespace CodexQuota
             ToolTipService.SetToolTip(WarnLowerBox, AppStrings.Get("Ui.CriticalTooltip"));
             WorkdayHoursText.Text = AppStrings.Get("Ui.WorkdayHours");
             ToolTipService.SetToolTip(WorkdayHoursBox, AppStrings.Get("Ui.WorkdayHoursTooltip"));
-            ImminentHoursText.Text = AppStrings.Get("Ui.ImminentHours");
-            ToolTipService.SetToolTip(ImminentHoursBox, AppStrings.Get("Ui.ImminentHoursTooltip"));
+            ToolTipService.SetToolTip(ImminentCheck, AppStrings.Get("Ui.ImminentTimeTooltip"));
         }
 
         private void ToggleAppearanceSection()
@@ -209,6 +209,8 @@ namespace CodexQuota
                 WidgetAppearanceSettings.ShowProgressBar = true;
             else if (ReferenceEquals(sender, ColorCodeTextCheck))
                 WidgetAppearanceSettings.ColorCodeText = true;
+            else if (ReferenceEquals(sender, ImminentCheck))
+                WidgetAppearanceSettings.ShowImminentDate = true;
 
             RefreshPanelForAppearance();
         }
@@ -224,6 +226,8 @@ namespace CodexQuota
                 WidgetAppearanceSettings.ShowProgressBar = false;
             else if (ReferenceEquals(sender, ColorCodeTextCheck))
                 WidgetAppearanceSettings.ColorCodeText = false;
+            else if (ReferenceEquals(sender, ImminentCheck))
+                WidgetAppearanceSettings.ShowImminentDate = false;
 
             RefreshPanelForAppearance();
         }
@@ -271,18 +275,6 @@ namespace CodexQuota
             WorkdayHoursBox.Value = PaceSettings.WorkdayHours;
         }
 
-        private void ImminentHoursBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
-        {
-            if (double.IsNaN(args.NewValue))
-                return;
-
-            int value = (int)Math.Round(args.NewValue);
-            if (value == ResetDateDisplay.ImminentWindowHours)
-                return;
-
-            ResetDateDisplay.ImminentWindowHours = value;
-            ImminentHoursBox.Value = ResetDateDisplay.ImminentWindowHours;
-        }
 
         // The panel renders the same remaining percent with the same urgency colors, so a toggle while
         // the flyout is open should re-render it in place rather than wait for the next publish.

@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Предупреждение (оранжевый) ниже этого оставшегося процента</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Критический уровень (красный) ниже этого оставшегося процента</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Предполагаемые часы программирования в каждом 24-часовом дне квоты</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>Абсолютная дата в пределах</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Показывает локальную дату вместо обратного отсчёта, когда до сброса меньше этого числа часов (0 = всегда отсчёт)</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>Точное время</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>За сутки до сброса показывает точное локальное время вместо обратного отсчёта</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Сеанс</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>За неделю</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>За месяц</value></data>

@@ -1,6 +1,6 @@
 using System;
+using System.Globalization;
 using CodexQuota;
-
 namespace CodexQuota.Tests;
 
 /// <summary>
@@ -136,10 +136,42 @@ public class QuotaDisplayTests
         => Assert.False(ResetDateDisplay.IsImminent(null, DateTimeOffset.UtcNow));
 
     [Fact]
-    public void LocalDateFormatIncludesDay()
+    public void LocalTimeFormatOmitsTheDay()
     {
-        var when = new DateTimeOffset(2026, 8, 6, 21, 28, 0, TimeSpan.Zero);
-        // Month/day names and 12/24h style follow the OS locale; the day is stable.
-        Assert.Contains("6", ResetDateDisplay.FormatLocalDate(when));
+        var previousUi = CultureInfo.CurrentUICulture;
+        try
+        {
+            // Pin the culture so the assertion holds regardless of the machine locale.
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            var offset = TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 8, 6));
+            var when = new DateTimeOffset(2026, 8, 6, 21, 28, 0, offset);
+            // Inside the 24-hour imminent window only the clock time is shown; the day is redundant.
+            Assert.Equal("21:28", ResetDateDisplay.FormatLocalTime(when));
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previousUi;
+        }
+    }
+
+    [Fact]
+    public void ImminentWindowIsFixedAt24HoursWhileEnabled()
+    {
+        var now = new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
+        bool enabled = WidgetAppearanceSettings.ShowImminentDate;
+        try
+        {
+            WidgetAppearanceSettings.ShowImminentDate = true;
+            Assert.True(ResetDateDisplay.IsImminent(now.AddHours(24), now));
+            Assert.False(ResetDateDisplay.IsImminent(now.AddHours(24).AddMinutes(1), now));
+
+            WidgetAppearanceSettings.ShowImminentDate = false;
+            Assert.Equal(TimeSpan.Zero, ResetDateDisplay.ImminentWindow);
+            Assert.False(ResetDateDisplay.IsImminent(now.AddMinutes(1), now));
+        }
+        finally
+        {
+            WidgetAppearanceSettings.ShowImminentDate = enabled;
+        }
     }
 }

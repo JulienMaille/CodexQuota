@@ -13,12 +13,12 @@
   <data name="Ui.ProfileAsOfLive" xml:space="preserve"><value>Stand {0} · lokale Sitzungen</value></data>
   <data name="Ui.LiveLocalSessions" xml:space="preserve"><value>lokale Sitzungen</value></data>
   <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} Token</value></data>
-  <data name="Ui.ResetsOn" xml:space="preserve"><value>wird am {0} zurückgesetzt</value></data>
+  <data name="Ui.ResetsOn" xml:space="preserve"><value>wird um {0} zurückgesetzt</value></data>
   <data name="Ui.ResetsIn" xml:space="preserve"><value>wird in {0} zurückgesetzt</value></data>
   <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} Zurücksetzungsguthaben</value></data>
-  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>ältestes läuft am {0} ab</value></data>
+  <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>ältestes läuft um {0} ab</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>ältestes läuft in {0} ab</value></data>
-  <data name="Ui.ExpiresOn" xml:space="preserve"><value>läuft am {0} ab</value></data>
+  <data name="Ui.ExpiresOn" xml:space="preserve"><value>läuft um {0} ab</value></data>
   <data name="Ui.ExpiresIn" xml:space="preserve"><value>läuft in {0} ab</value></data>
   <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} Zurücksetzungsguthaben</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Zuletzt aktualisiert {0}</value></data>
@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Achtung (orange) unter diesem verbleibenden Prozentsatz</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Kritisch (rot) unter diesem verbleibenden Prozentsatz</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Angenommene Programmierstunden pro 24-Stunden-Kontingent-Tag</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>Absolutes Datum ab</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Zeigt das lokale Datum statt eines Countdowns, wenn ein Reset näher als diese Stundenzahl liegt (0 = immer Countdown)</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>Exakte Uhrzeit</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>Zeigt weniger als 24 Stunden vor einem Reset die exakte lokale Uhrzeit statt eines Countdowns</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Sitzung</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>Wöchentlich</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>Monatlich</value></data>

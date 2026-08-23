@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>Caution (orange) below this remaining percent</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>Critical (red) below this remaining percent</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>Assumed coding hours in each 24-hour quota day</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>Absolute date within</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>Show the local date instead of a countdown when a reset is closer than this many hours (0 = always count down)</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>Exact time</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>Within 24 hours of a reset, show the exact local time instead of a countdown</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>Session</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>Weekly</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>Monthly</value></data>

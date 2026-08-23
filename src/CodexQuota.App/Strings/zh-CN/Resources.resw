@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>剩余百分比低于此值时提醒</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>剩余百分比低于此值时标记为严重</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>每个 24 小时配额日的预计编码小时数</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>绝对日期阈值</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>重置临近该小时数时显示本地日期而非倒计时（0 = 始终倒计时）</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>精确时间</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>重置前 24 小时内显示准确的本地时间而非倒计时</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>会话</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>每周</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>每月</value></data>

@@ -13,6 +13,7 @@ public static class WidgetAppearanceSettings
     private const string ShowIconValueName = "ShowIcon";
     private const string ShowProgressBarValueName = "ShowProgressBar";
     private const string ColorCodeTextValueName = "ColorCodeText";
+    private const string ShowImminentDateValueName = "ShowImminentDate";
     private const string WarningUpperValueName = "WarningUpperPercent";
     private const string WarningLowerValueName = "WarningLowerPercent";
 
@@ -32,6 +33,7 @@ public static class WidgetAppearanceSettings
 
             MigrateInverted(key, "HideIcon", ShowIconValueName);
             MigrateInverted(key, "HideProgressBar", ShowProgressBarValueName);
+            MigrateImminentWindow(key);
         }
         catch
         {
@@ -53,6 +55,23 @@ public static class WidgetAppearanceSettings
             return;
 
         key.SetValue(newName, legacy == 0 ? 1 : 0, RegistryValueKind.DWord);
+    }
+
+    /// <summary>
+    /// Maps the retired "ImminentWindowHours" threshold (0 = always count down, anything else =
+    /// show the imminent form) onto the boolean ShowImminentDate toggle; the window itself is now
+    /// fixed at 24 hours. A value already set under the new name wins over the legacy one.
+    /// </summary>
+    internal static void MigrateImminentWindow(RegistryKey key)
+    {
+        if (key.GetValue("ImminentWindowHours") is not int legacy)
+            return;
+
+        key.DeleteValue("ImminentWindowHours", throwOnMissingValue: false);
+        if (key.GetValue(ShowImminentDateValueName) is int)
+            return;
+
+        key.SetValue(ShowImminentDateValueName, legacy == 0 ? 0 : 1, RegistryValueKind.DWord);
     }
 
     /// <summary>Shows the Codex badge glyph in the taskbar tile (cleared shows the name letter instead).</summary>
@@ -77,6 +96,13 @@ public static class WidgetAppearanceSettings
     {
         get => ReadBool(ColorCodeTextValueName, defaultValue: false);
         set => WriteBool(ColorCodeTextValueName, value);
+    }
+
+    /// <summary>Shows resets within the next 24 hours as an exact local time instead of a countdown.</summary>
+    public static bool ShowImminentDate
+    {
+        get => ReadBool(ShowImminentDateValueName, defaultValue: true);
+        set => WriteBool(ShowImminentDateValueName, value);
     }
 
     /// <summary>Remaining-percent boundary for the caution (amber) color and the upper bar marker.</summary>

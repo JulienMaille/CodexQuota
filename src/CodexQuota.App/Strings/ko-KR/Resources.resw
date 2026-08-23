@@ -35,8 +35,8 @@
   <data name="Ui.CautionTooltip" xml:space="preserve"><value>남은 백분율이 이 값 미만이면 주의</value></data>
   <data name="Ui.CriticalTooltip" xml:space="preserve"><value>남은 백분율이 이 값 미만이면 위험</value></data>
   <data name="Ui.WorkdayHoursTooltip" xml:space="preserve"><value>24시간 할당량 기준 하루 동안 가정하는 코딩 시간</value></data>
-  <data name="Ui.ImminentHours" xml:space="preserve"><value>절대 날짜 기준</value></data>
-  <data name="Ui.ImminentHoursTooltip" xml:space="preserve"><value>리셋이 이 시간 이내면 카운트다운 대신 현지 날짜를 표시합니다(0 = 항상 카운트다운)</value></data>
+  <data name="Ui.AppearanceImminentTime" xml:space="preserve"><value>정확한 시간</value></data>
+  <data name="Ui.ImminentTimeTooltip" xml:space="preserve"><value>리셋 24시간 이내에는 카운트다운 대신 정확한 현지 시간을 표시합니다</value></data>
   <data name="Labels.Session" xml:space="preserve"><value>세션</value></data>
   <data name="Labels.Weekly" xml:space="preserve"><value>주간</value></data>
   <data name="Labels.Monthly" xml:space="preserve"><value>월간</value></data>

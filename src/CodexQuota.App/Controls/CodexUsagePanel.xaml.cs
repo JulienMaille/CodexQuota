@@ -378,7 +378,7 @@ namespace CodexQuota.Controls
             if (!string.IsNullOrWhiteSpace(resetDescription) || ResetDateDisplay.IsImminent(resetAt, DateTimeOffset.UtcNow))
             {
                 string resetText = ResetDateDisplay.IsImminent(resetAt, DateTimeOffset.UtcNow) && resetAt is { } resetWhen
-                    ? AppStrings.Format("Ui.ResetsOn", ResetDateDisplay.FormatLocalDate(resetWhen))
+                    ? AppStrings.Format("Ui.ResetsOn", ResetDateDisplay.FormatLocalTime(resetWhen))
                     : AppStrings.Format("Ui.ResetsIn", AppStrings.LocalizeCountdown(resetDescription));
                 head.Children.Add(new TextBlock
                 {
@@ -477,7 +477,7 @@ namespace CodexQuota.Controls
                 // only earns its space when several credits compete for the nearest expiry.
                 bool single = resetCredits.AvailableCount == 1;
                 line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
-                    ? $" · {AppStrings.Format(single ? "Ui.ExpiresOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalDate(expires))}"
+                    ? $" · {AppStrings.Format(single ? "Ui.ExpiresOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalTime(expires))}"
                     : $" · {AppStrings.Format(single ? "Ui.ExpiresIn" : "Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
             }
             rows.Add(line);

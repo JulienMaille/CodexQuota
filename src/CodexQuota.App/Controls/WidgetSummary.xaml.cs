@@ -983,7 +983,7 @@ namespace CodexQuota.Controls
         private static string ResetDisplayText(WidgetUsageRow row)
         {
             if (ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow) && row.ResetAt is { } resetWhen)
-                return ResetDateDisplay.FormatLocalDate(resetWhen);
+                return ResetDateDisplay.FormatLocalTime(resetWhen);
             if (string.IsNullOrWhiteSpace(row.ResetDescription))
                 return string.Empty;
             return AppStrings.LocalizeCountdown(row.ResetDescription);
