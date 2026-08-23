@@ -14,7 +14,7 @@ Fork of [TaskbarQuota](https://github.com/zioder/TaskbarQuota) (MIT), trimmed to
 
 ## Features
 
-- Taskbar tile next to the notification area: remaining quota with progress bar and reset countdown (`6d 22h`), switching to an absolute date when the reset is within 24 hours.
+- Taskbar tile next to the notification area: remaining quota with progress bar and reset countdown (`6d 22h`), switching to the exact local time when a reset is within 24 hours (toggleable).
 - Flyout on click: plan + email, per-meter bars (session, weekly, monthly, model, credits), reset countdowns, credit balance, oldest reset-credit expiry.
 - Profile activity heatmap in the flyout: a GitHub-style grid of daily token squares spanning 22 weeks, with the low-density history filled from local session journals (server data stays authoritative where both exist).
 - Persistent toggles in the flyout (`HKCU\Software\CodexQuota`): icon, progress bars, colored percent (amber at 50% remaining or less, red at 20% or less).

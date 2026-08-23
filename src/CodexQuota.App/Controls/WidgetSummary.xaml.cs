@@ -207,7 +207,6 @@ namespace CodexQuota.Controls
                     new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 0, "--", HasBar: false),
                 };
                 RenderRows();
-                ToolTipService.SetToolTip(this, $"{widgetName}: {AppStrings.LocalizeStatus(result.Error, "Widget.Loading")}");
                 return;
             }
 
@@ -216,14 +215,13 @@ namespace CodexQuota.Controls
                 // Unknown values: both rows use the same "--" marker with no bars, matching the
                 // first-paint placeholder. The previous rendering (full bar + "!" on the weekly line
                 // only) made the two unknown rows look inconsistent and read as invalid data (issue
-                // #21); the failure state is still distinguishable via the tooltip.
+                // #21).
                 _rows = new()
                 {
                     new WidgetUsageRow(CompactLabel(result.Provider?.SessionLabel ?? "Session"), 0, "--", HasBar: false),
                     new WidgetUsageRow(CompactLabel(result.Provider?.WeeklyLabel ?? "Weekly"), 0, "--", HasBar: false),
                 };
                 RenderRows();
-                ToolTipService.SetToolTip(this, $"{widgetName}: {AppStrings.LocalizeStatus(result.Error, "Widget.Unavailable")}");
                 return;
             }
 
@@ -237,14 +235,6 @@ namespace CodexQuota.Controls
             RenderRows();
             SetBars();
 
-            var tooltipLines = _rows.Select(FormatTooltipLine);
-            var plan = FormatPlanLabel(result.Id, widgetName, usage.LoginMethod);
-            var resetCreditsTooltip = WidgetResetCreditsTooltipLine(usage.ResetCredits);
-            var staleTooltip = StaleTooltipLine(result);
-            ToolTipService.SetToolTip(this,
-                string.IsNullOrEmpty(plan)
-                    ? $"{WidgetTooltipTitle(widgetName)}\n{string.Join("\n", tooltipLines)}{resetCreditsTooltip}{staleTooltip}"
-                    : $"{WidgetTooltipTitle(widgetName)} · {plan}\n{string.Join("\n", tooltipLines)}{resetCreditsTooltip}{staleTooltip}");
         }
 
         public void SetActiveToolVisible(bool isVisible)
@@ -392,40 +382,6 @@ namespace CodexQuota.Controls
             return cost.Limit is { } limit ? $"{Money(cost.Amount)}/{Money(limit)}" : Money(cost.Amount);
         }
 
-        private static string WidgetResetCreditsTooltipLine(ResetCreditsSnapshot? resetCredits)
-        {
-            if (resetCredits is null)
-                return string.Empty;
-
-            var lines = new List<string>
-            {
-                AppStrings.Format(
-                    "Widget.ResetCreditsAvailable",
-                    resetCredits.AvailableCount.ToString("N0", CultureInfo.CurrentUICulture)),
-            };
-
-            int shown = 0;
-            for (int i = 0; i < resetCredits.Credits.Count && shown < 3; i++)
-            {
-                var credit = resetCredits.Credits[i];
-                string granted = FormatLocalDateTime(credit.GrantedAt);
-                string expires = FormatLocalDateTime(credit.ExpiresAt);
-                lines.Add(AppStrings.Format("Widget.ResetGrantedExpires", shown + 1, granted, expires));
-                shown++;
-            }
-
-            if (resetCredits.Credits.Count > shown)
-                lines.Add(AppStrings.Format("Widget.MoreResetCredits", resetCredits.Credits.Count - shown));
-
-            return "\n" + string.Join("\n", lines);
-        }
-
-        /// <summary>Names the age of a snapshot restored from the previous session; empty when live.</summary>
-        private static string StaleTooltipLine(UsageResult result)
-            => result.IsStale && result.Fetch is { } fetch
-                ? $"\n{AppStrings.Format("Widget.LastUpdatedRefreshing", FormatLocalDateTime(fetch.FetchedAt))}"
-                : string.Empty;
-
         private static string BuildRenderSignature(UsageResult result)
         {
             var parts = new List<string>
@@ -497,39 +453,6 @@ namespace CodexQuota.Controls
             parts.Add(window.ShowCostValue ? "cost" : "percent");
         }
 
-        private static string FormatPlanLabel(ProviderId id, string displayName, string? loginMethod)
-            => AppStrings.LocalizePlan(PlanDisplayNames.ForTitle(id, displayName, loginMethod));
-
-        private static string FormatTooltipLine(WidgetUsageRow row)
-        {
-            string resetDisplay = row.ResetDescription ?? string.Empty;
-            bool imminent = ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow);
-            string label = AppStrings.LocalizeLabel(row.Label);
-
-            if (resetDisplay.Length == 0 && !imminent)
-                return $"{label}: {row.Value}";
-
-            string? dateForm = imminent && row.ResetAt is { } resetWhen ? ResetDateDisplay.FormatLocalDate(resetWhen) : null;
-            if (row.Label == "Resets" && !row.SingleReset)
-            {
-                string expiry = dateForm is not null
-                    ? AppStrings.Format("Widget.OldestExpiresOn", dateForm)
-                    : resetDisplay == "now"
-                        ? AppStrings.Get("Widget.OldestExpiresNow")
-                        : AppStrings.Format("Widget.OldestExpiresIn", AppStrings.LocalizeCountdown(resetDisplay));
-                return $"{label}: {row.Value} - {expiry}";
-            }
-
-            string reset = dateForm is not null
-                ? AppStrings.Format("Widget.ResetsOn", dateForm)
-                : resetDisplay == "now"
-                    ? AppStrings.Get("Widget.ResetsNow")
-                    : AppStrings.Format("Widget.ResetsIn", AppStrings.LocalizeCountdown(resetDisplay));
-            return $"{label}: {row.Value} - {reset}";
-        }
-
-        private static string WidgetTooltipTitle(string widgetName) => widgetName;
-
         private static string BaseLabelText(WidgetUsageRow row) => AppStrings.LocalizeLabel(row.Label);
 
         private static double MeasureTextWidth(string text, int fontSize = WidgetFontSize)
@@ -543,15 +466,6 @@ namespace CodexQuota.Controls
             };
             textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             return Math.Ceiling(textBlock.DesiredSize.Width);
-        }
-
-        private static string FormatLocalDateTime(DateTimeOffset? timestamp)
-        {
-            if (timestamp is not DateTimeOffset value)
-                return AppStrings.Get("Widget.Unknown");
-
-            var local = value.ToLocalTime();
-            return local.ToString("d MMM HH:mm", CultureInfo.CurrentUICulture);
         }
 
         private static Brush ResetBrush(string resetDescription)

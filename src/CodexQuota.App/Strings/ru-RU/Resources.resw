@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>Загрузка…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Загрузка активного провайдера…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>Недоступно</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>неизвестно</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>Кредиты на сброс: доступно {0}</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>Сброс {0}: выдано {1}, истекает {2}</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} дополнительных кредитов на сброс</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>Обновлено {0} · обновление…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>раньше всего истекает {0}</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>раньше всего истекает сейчас</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>раньше всего истекает через {0}</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>сброс {0}</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>сброс сейчас</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>сброс через {0}</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>Темп · лимит достигнут · сброс {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Темп ~{0} % квоты/день → лимит {1} (~{2:0.#} д)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Темп ~{0} % квоты/день · сброс до достижения лимита</value></data>

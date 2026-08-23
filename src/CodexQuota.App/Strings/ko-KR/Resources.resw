@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>로드 중…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>활성 공급자 로드 중…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>사용할 수 없음</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>알 수 없음</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>리셋 크레딧: {0}개 사용 가능</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>리셋 {0}: {1}에 부여, {2}에 만료</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0}개의 추가 리셋 크레딧</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>마지막 업데이트 {0} · 새로 고치는 중…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>가장 오래된 항목 {0}에 만료</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>가장 오래된 항목 지금 만료</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>가장 오래된 항목 {0} 후 만료</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>{0}에 재설정</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>지금 재설정</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>{0} 후 재설정</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>페이스 · 한도 도달 · {0}에 재설정</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>페이스 ~{0}% 할당량/일 → 한도 {1} (~{2:0.#}일)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>페이스 ~{0}% 할당량/일 · 한도 도달 전에 재설정</value></data>

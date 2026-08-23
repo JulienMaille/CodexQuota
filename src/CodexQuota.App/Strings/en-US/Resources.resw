@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>Loading…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Loading active provider…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>Unavailable</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>unknown</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>Reset credits: {0} available</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>Reset {0}: granted {1}, expires {2}</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} more reset credits</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>Last updated {0} · refreshing…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>oldest expires {0}</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>oldest expires now</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>oldest expires in {0}</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>resets {0}</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>resets now</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>resets in {0}</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>Pace · cap reached · resets {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Pace ~{0}% quota/day → cap {1} (~{2:0.#}d)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Pace ~{0}% quota/day · resets before cap</value></data>

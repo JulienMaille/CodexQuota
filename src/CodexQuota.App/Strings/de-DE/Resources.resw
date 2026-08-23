@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>Wird geladen…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Aktiver Anbieter wird geladen…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>Nicht verfügbar</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>unbekannt</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>Zurücksetzungsguthaben: {0} verfügbar</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>Zurücksetzung {0}: gewährt am {1}, läuft am {2} ab</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} weitere Zurücksetzungsguthaben</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>Zuletzt aktualisiert {0} · wird aktualisiert…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>ältestes läuft am {0} ab</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>ältestes läuft jetzt ab</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>ältestes läuft in {0} ab</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>wird am {0} zurückgesetzt</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>wird jetzt zurückgesetzt</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>wird in {0} zurückgesetzt</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>Tempo · Limit erreicht · wird am {0} zurückgesetzt</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Tempo ~{0} % des Kontingents/Tag → Limit {1} (~{2:0.#} T)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Tempo ~{0} % des Kontingents/Tag · Zurücksetzung vor dem Limit</value></data>

@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>正在加载…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>正在加载活动提供商…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>不可用</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>未知</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>重置额度：可用 {0}</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>重置 {0}：于 {1} 授予，将于 {2} 到期</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0} 个额外重置额度</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>最后更新 {0} · 正在刷新…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>最早的现在到期</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>最早于 {0} 到期</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>于 {0} 重置</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>现在重置</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>{0} 后重置</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>速率 · 已达到上限 · 于 {0} 重置</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>速率 ~{0}%/天 → 上限 {1}（约 {2:0.#} 天）</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>速率 ~{0}%/天 · 在达到上限前重置</value></data>

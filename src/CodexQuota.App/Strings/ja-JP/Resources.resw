@@ -63,17 +63,6 @@
   <data name="Widget.Loading" xml:space="preserve"><value>読み込み中…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>アクティブなプロバイダーを読み込み中…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>使用不可</value></data>
-  <data name="Widget.Unknown" xml:space="preserve"><value>不明</value></data>
-  <data name="Widget.ResetCreditsAvailable" xml:space="preserve"><value>リセットクレジット：{0}件利用可能</value></data>
-  <data name="Widget.ResetGrantedExpires" xml:space="preserve"><value>リセット{0}：{1}付与、{2}に期限切れ</value></data>
-  <data name="Widget.MoreResetCredits" xml:space="preserve"><value>+{0}件の追加リセットクレジット</value></data>
-  <data name="Widget.LastUpdatedRefreshing" xml:space="preserve"><value>最終更新 {0} · 更新中…</value></data>
-  <data name="Widget.OldestExpiresOn" xml:space="preserve"><value>最も古いものは{0}に期限切れ</value></data>
-  <data name="Widget.OldestExpiresNow" xml:space="preserve"><value>最も古いものは今すぐ期限切れ</value></data>
-  <data name="Widget.OldestExpiresIn" xml:space="preserve"><value>最も古いものは{0}後に期限切れ</value></data>
-  <data name="Widget.ResetsOn" xml:space="preserve"><value>{0}にリセット</value></data>
-  <data name="Widget.ResetsNow" xml:space="preserve"><value>今すぐリセット</value></data>
-  <data name="Widget.ResetsIn" xml:space="preserve"><value>{0}後にリセット</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>ペース · 上限到達 · {0}にリセット</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>ペース ~{0}%/日 → 上限 {1}（約{2:0.#}日）</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>ペース ~{0}%/日 · 上限前にリセット</value></data>
