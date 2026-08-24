@@ -158,7 +158,15 @@ namespace CodexQuota.Controls
             foreach (var row in _renderedRows)
             {
                 row.Track.Background = track;
-                row.Value.Foreground = Foreground;
+                // This method runs after every render and is the single writer of the value color:
+                // urgency tint when color coding is on and the remaining percent crossed a threshold,
+                // the taskbar-appropriate foreground otherwise (theme brushes can mismatch the bar).
+                bool urgent = WidgetAppearanceSettings.ColorCodeText
+                    && row.Source.HasBar
+                    && row.Source.Percent <= WidgetAppearanceSettings.WarningUpperPercent;
+                row.Value.Foreground = urgent
+                    ? (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(row.Source.Percent)]
+                    : Foreground;
                 foreach (var marker in row.Markers)
                     marker.Background = _markerBrush;
             }
@@ -715,10 +723,6 @@ namespace CodexQuota.Controls
                 0.86,
                 compactTextOnlyValue ? TextAlignment.Left : TextAlignment.Center,
                 textSize);
-            // Optional urgency coloring of the remaining percent (default white, amber at or below
-            // the configured upper threshold, red at or below the lower threshold).
-            if (WidgetAppearanceSettings.ColorCodeText && usageRow.HasBar)
-                value.Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(usageRow.Percent)];
             var reset = CreateResetText(usageRow, textSize);
 
             FrameworkElement label;
