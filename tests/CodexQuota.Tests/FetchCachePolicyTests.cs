@@ -1,3 +1,4 @@
+using System.IO;
 using CodexQuota.Usage;
 
 namespace CodexQuota.Tests;
@@ -73,7 +74,7 @@ public class FetchCachePolicyTests
     }
 
     [Fact]
-    public async Task FetchAsync_SameLiveUsage_ReturnsPreviousSuccessfulResult()
+    public async Task FetchAsync_SameLiveUsage_ReturnsFreshResultWithCurrentTimestamp()
     {
         var service = new UsageService();
         var provider = new FlakyProvider();
@@ -82,9 +83,53 @@ public class FetchCachePolicyTests
         var first = await service.FetchAsync(ProviderId.Codex, force: true);
         var second = await service.FetchAsync(ProviderId.Codex, force: true);
 
-        Assert.Same(first, second);
+        // Values are unchanged, but each confirmed check must carry its own timestamp: the widget's
+        // "Last updated" line would otherwise go "(stale)" while refreshes keep succeeding.
+        Assert.NotSame(first, second);
+        Assert.Equal(first.Fetch!.Usage.Primary.UsedPercent, second.Fetch!.Usage.Primary.UsedPercent);
+        Assert.True(second.Fetch.FetchedAt >= first.Fetch.FetchedAt);
         Assert.Equal(2, provider.FetchCount);
     }
+
+    [Fact]
+    public async Task FetchAsync_ConfirmingDiskRestoredSnapshot_ReturnsFreshNonStaleResult()
+    {
+        // Boot path: yesterday's snapshot is restored from disk as stale. A live fetch returning the
+        // same values must publish fresh (non-stale) data with a current FetchedAt — not the restored
+        // baseline whose age reads as "(stale)" in the flyout right after a successful refresh.
+        var dir = Path.Combine(Path.GetTempPath(), "cq-cache-" + Path.GetRandomFileName());
+        try
+        {
+            var staleFetchTime = DateTimeOffset.Now.AddHours(-20);
+            UsageSnapshotStore.Save(dir, new Dictionary<ProviderId, UsageResult>
+            {
+                [ProviderId.Codex] = ResultWith(42, 73, staleFetchTime),
+            });
+
+            var service = new UsageService(dir);
+            service.Register(new FlakyProvider());
+
+            var fresh = await service.FetchAsync(ProviderId.Codex, force: true);
+
+            Assert.True(fresh.Ok);
+            Assert.False(fresh.IsStale);
+            Assert.True(fresh.Fetch!.FetchedAt > staleFetchTime);
+            Assert.Equal(42, fresh.Fetch.Usage.Primary.UsedPercent);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static UsageResult ResultWith(double primary, double secondary, DateTimeOffset fetchedAt)
+        => UsageResult.Success(
+            ProviderId.Codex,
+            new FlakyProvider(),
+            new ProviderFetchResult(
+                new UsageSnapshot(new RateWindow(primary)) { Secondary = new RateWindow(secondary), LoginMethod = "Max" },
+                "live",
+                fetchedAt));
 
     [Fact]
     public async Task FetchAsync_WindowVisibilityChange_IsNotCollapsedAsSameUsage()

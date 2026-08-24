@@ -89,17 +89,6 @@ public class UsageSnapshotStoreTests : IDisposable
         File.WriteAllText(path, node.ToJsonString());
     }
 
-    [Fact]
-    public void AsFresh_ClearsStaleMarkOnceALiveFetchConfirmsTheValues()
-    {
-        var restored = Result(ProviderId.Codex, 42.5, 61, DateTimeOffset.Now.AddHours(3)).AsStale();
-
-        Assert.True(restored.IsStale);
-        Assert.False(restored.AsFresh().IsStale);
-        // FetchedAt means "when the values last changed", so confirming them must not restamp it —
-        // the widget's "Last updated" line reads from here.
-        Assert.Same(restored.Fetch, restored.AsFresh().Fetch);
-    }
 
     [Fact]
     public void Load_KeepsAnEntryConfirmedRecentlyEvenWhenItsValuesAreOld()

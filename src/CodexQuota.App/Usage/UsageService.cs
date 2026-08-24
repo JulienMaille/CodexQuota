@@ -93,10 +93,14 @@ namespace CodexQuota.Usage
                 var result = UsageResult.Success(id, provider, fetch);
                 if (TryGetLastSuccessfulLiveResult(id, out var lastSuccess) && SameUsage(lastSuccess, result))
                 {
-                    lastSuccess = lastSuccess.AsFresh();
-                    Store(id, lastSuccess, FetchCachePolicy.TtlForSuccess());
-                    StoreLastSuccessfulLiveResult(id, lastSuccess);
-                    return lastSuccess;
+                    // A live fetch just confirmed the unchanged values. Return the fresh instance so
+                    // the "Last updated" stamp reflects this check: reusing the baseline would surface
+                    // a disk-restored FetchedAt as "(stale)" right after a successful refresh. The
+                    // baseline itself is kept by StoreLastSuccessfulLiveResult when recent, which is
+                    // what spares the snapshot file a rewrite on every unchanged poll.
+                    Store(id, result, FetchCachePolicy.TtlForSuccess());
+                    StoreLastSuccessfulLiveResult(id, result);
+                    return result;
                 }
 
                 Store(id, result, FetchCachePolicy.TtlForSuccess());
@@ -377,14 +381,6 @@ namespace CodexQuota.Usage
 
         /// <summary>Marks a snapshot as restored-from-disk (see <see cref="IsStale"/>).</summary>
         public UsageResult AsStale() => WithStale(true);
-
-        /// <summary>
-        /// Clears the stale mark once a live fetch has confirmed the values. FetchedAt is deliberately
-        /// left alone: it means "when these values last changed", which is what the widget's
-        /// "Last updated" line reports. Snapshot expiry tracks confirmation separately, via the SavedAt
-        /// stamp UsageSnapshotStore writes on each persist.
-        /// </summary>
-        public UsageResult AsFresh() => IsStale ? WithStale(false) : this;
 
         private UsageResult WithStale(bool isStale)
             => new()
