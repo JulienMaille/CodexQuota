@@ -19,17 +19,18 @@
              reveals. -->
         <StackPanel x:Name="AppearanceSection"
                     Margin="16,6,16,12"
+                    Padding="14,10,14,12"
                     Spacing="8"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Bottom"
                     Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                    CornerRadius="4"
+                    CornerRadius="8"
                     Visibility="Collapsed">
             <StackPanel.RenderTransform>
                 <TranslateTransform x:Name="AppearanceSectionTransform"/>
             </StackPanel.RenderTransform>
             <Border Height="1"
-                    Margin="0,2,0,4"
+                    Margin="0,0,0,2"
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
             <StackPanel Orientation="Horizontal"
                         Spacing="10"
@@ -82,7 +83,7 @@
             <StackPanel Orientation="Horizontal"
                         Spacing="8"
                         HorizontalAlignment="Left"
-                        Margin="0,8,0,0">
+                        Margin="0,6,0,0">
                 <TextBlock x:Name="WarnBelowText"
                            Text="Warn below %"
                            VerticalAlignment="Center"
