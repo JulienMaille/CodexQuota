@@ -132,9 +132,14 @@ internal static class LocalCodexUsageScanner
                 {
                     using var document = JsonDocument.Parse(line);
                     var root = document.RootElement;
-                    if (!TryString(root, "type", out string? eventType)
+                    // Older journals carry JSON-null fields ("payload":null, "info":null);
+                    // TryGetProperty on a non-object element throws InvalidOperationException,
+                    // so every navigation hop re-checks ValueKind first.
+                    if (root.ValueKind != JsonValueKind.Object
+                        || !TryString(root, "type", out string? eventType)
                         || !string.Equals(eventType, "event_msg", StringComparison.Ordinal)
                         || !root.TryGetProperty("payload", out var payload)
+                        || payload.ValueKind != JsonValueKind.Object
                         || !TryString(payload, "type", out string? payloadType)
                         || !string.Equals(payloadType, "token_count", StringComparison.Ordinal)
                         || !TryString(root, "timestamp", out string? timestampText)
@@ -144,7 +149,8 @@ internal static class LocalCodexUsageScanner
                             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                             out var timestamp)
                         || DateOnly.FromDateTime(timestamp.UtcDateTime) != targetDay
-                        || !payload.TryGetProperty("info", out var info))
+                        || !payload.TryGetProperty("info", out var info)
+                        || info.ValueKind != JsonValueKind.Object)
                     {
                         continue;
                     }
@@ -166,9 +172,11 @@ internal static class LocalCodexUsageScanner
                         previousCumulative = cumulativeTokens;
                     }
                 }
-                catch (JsonException)
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
                 {
-                    // The final line may be in-flight while Codex is appending to the journal.
+                    // The final line may be in-flight while Codex is appending to the journal, and
+                    // older schemas hide JSON nulls where objects are expected. Skip the line rather
+                    // than let a journal quirk crash the caller (the flyout opens on this path).
                 }
             }
         }
