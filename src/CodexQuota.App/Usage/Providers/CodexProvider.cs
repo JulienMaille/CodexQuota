@@ -15,7 +15,7 @@ using CodexQuota.Helpers;
 namespace CodexQuota.Usage.Providers
 {
     /// <summary>
-    /// Codex (ChatGPT) usage via the OAuth token stored by the Codex CLI in ~/.codex/auth.json.
+    /// Codex (ChatGPT) usage via the OAuth token stored by the Codex app in ~/.codex/auth.json.
     /// Ported from Win-CodexBar rust/src/providers/codex/api.rs.
     /// </summary>
     public sealed class CodexProvider : IUsageProvider
@@ -24,17 +24,14 @@ namespace CodexQuota.Usage.Providers
         private const string UsagePath = "/wham/usage";
         private const string ResetCreditsPath = "/wham/rate-limit-reset-credits";
         private const string ProfilePath = "/wham/profiles/me";
+        private const string RefreshTokenUrl = "https://auth.openai.com/oauth/token";
+        private const string CodexClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
         private static readonly TimeSpan ResetCreditsTimeout = TimeSpan.FromSeconds(3);
-        // The profile endpoint is server-side aggregation (~0.7s measured): a short dedicated cap
-        // keeps a slow profile GET from stretching the poll cadence beyond policy + 10s. The shared
-        // HttpClient.Timeout (30s) is not enough because the poll re-arms only after the profile
-        // await completes (see UsageCoordinator.FetchAndPublishAsync).
         private static readonly TimeSpan ProfileTimeout = TimeSpan.FromSeconds(10);
         private static readonly Regex CodexModelPrefix = new(@"^GPT-[\d.]+-Codex-", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // Same hint for the usage and profile endpoints so a re-login message can never diverge.
         private const string AuthExpiredMessage =
-            "Codex sign-in expired: re-run `codex login` (Codex CLI) or update OPENAI_API_KEY in ~/.codex/auth.json.";
+            "Codex sign-in expired: open the Codex app to refresh, or update OPENAI_API_KEY in ~/.codex/auth.json.";
 
         private static readonly HttpClient Http = new(new HttpClientHandler())
         {
@@ -49,7 +46,7 @@ namespace CodexQuota.Usage.Providers
 
         public async Task<ProviderFetchResult> FetchUsageAsync(CancellationToken ct = default)
         {
-            var creds = LoadCredentials();
+            var creds = await LoadCredentialsAsync().ConfigureAwait(false);
 
             using var request = CreateRequest(creds, UsagePath);
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
@@ -160,7 +157,7 @@ namespace CodexQuota.Usage.Providers
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(ProfileTimeout);
 
-            var creds = LoadCredentials();
+            var creds = await LoadCredentialsAsync().ConfigureAwait(false);
 
             using var request = CreateRequest(creds, ProfilePath);
             try
@@ -547,22 +544,36 @@ namespace CodexQuota.Usage.Providers
 
         private sealed record Credentials(string AccessToken, string? AccountId);
 
-        private static Credentials LoadCredentials()
+        private static async Task<Credentials> LoadCredentialsAsync()
         {
             var authPath = GetAuthPath();
             if (!File.Exists(authPath))
-                throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex sign-in not found: ~/.codex/auth.json is missing. Run `codex login` (Codex CLI) or add OPENAI_API_KEY to that file.");
+                throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex sign-in not found: ~/.codex/auth.json is missing. Open the Codex app to sign in, or add OPENAI_API_KEY to that file.");
 
-            using var doc = JsonDocument.Parse(File.ReadAllText(authPath));
+            var json = File.ReadAllText(authPath);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (root.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
             {
                 string? access = tokens.TryGetProperty("access_token", out var at) ? at.GetString() : null;
+                string? refresh = tokens.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
+                string? acct = tokens.TryGetProperty("account_id", out var ac) ? ac.GetString() : null;
+
                 if (!string.IsNullOrEmpty(access))
                 {
-                    string? acct = tokens.TryGetProperty("account_id", out var ac) ? ac.GetString() : null;
-                    return new Credentials(access!, acct);
+                    // Auto-refresh when the access token is expired or expiring within 5 minutes.
+                    if (IsTokenExpired(access) && !string.IsNullOrEmpty(refresh))
+                    {
+                        var refreshed = await RefreshAccessTokenAsync(refresh).ConfigureAwait(false);
+                        if (refreshed != null)
+                        {
+                            SaveRefreshedTokens(authPath, refreshed.Value.AccessToken, refreshed.Value.RefreshToken, acct);
+                            return new Credentials(refreshed.Value.AccessToken, acct);
+                        }
+                    }
+
+                    return new Credentials(access, acct);
                 }
             }
 
@@ -573,6 +584,117 @@ namespace CodexQuota.Usage.Providers
             }
 
             throw new ProviderException(ProviderErrorKind.Parse, "Codex auth.json contains no usable token.");
+        }
+
+        /// <summary>Returns true when the JWT exp claim is within 5 minutes of now or already past.</summary>
+        private static bool IsTokenExpired(string accessToken)
+        {
+            try
+            {
+                var parts = accessToken.Split('.');
+                if (parts.Length != 2) return true; // malformed — let the caller surface the real error
+
+                var payload = parts[1];
+                // Base64url → Base64 padding
+                var mod = payload.Length % 4;
+                if (mod > 0) payload += new string('=', 4 - mod);
+                var bytes = Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/'));
+                var json = System.Text.Encoding.UTF8.GetString(bytes);
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("exp", out var exp) && exp.ValueKind == JsonValueKind.Number && exp.TryGetInt64(out var expSec))
+                {
+                    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    return expSec <= now + 300; // 5-minute buffer
+                }
+            }
+            catch
+            {
+                // If we can't parse, treat as expired so the caller sees the real auth error.
+            }
+            return true;
+        }
+
+        private struct RefreshedTokens
+        {
+            public string AccessToken { get; init; }
+            public string RefreshToken { get; init; }
+        }
+
+        private static async Task<RefreshedTokens?> RefreshAccessTokenAsync(string refreshToken)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, RefreshTokenUrl);
+                request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "refresh_token",
+                    ["refresh_token"] = refreshToken,
+                    ["client_id"] = CodexClientId,
+                });
+
+                using var response = await Http.SendAsync(request, CancellationToken.None).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                using var stream = await response.Content.ReadAsStreamAsync(CancellationToken.None).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                var root = doc.RootElement;
+
+                string? newAccess = root.TryGetProperty("access_token", out var atEl) ? atEl.GetString() : null;
+                string? newRefresh = root.TryGetProperty("refresh_token", out var rtEl) ? rtEl.GetString() : refreshToken;
+
+                if (string.IsNullOrEmpty(newAccess))
+                    return null;
+
+                return new RefreshedTokens { AccessToken = newAccess, RefreshToken = newRefresh! };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void SaveRefreshedTokens(string authPath, string newAccessToken, string newRefreshToken, string? accountId)
+        {
+            try
+            {
+                var json = JsonDocument.Parse(File.ReadAllText(authPath));
+                var root = json.RootElement;
+                using var doc = new System.IO.MemoryStream();
+                using (var w = new Utf8JsonWriter(doc, new JsonWriterOptions { Indented = true }))
+                {
+                    w.WriteStartObject();
+                    foreach (var prop in root.EnumerateObject())
+                    {
+                        if (prop.Name == "last_refresh") continue; // rewritten below
+                        if (prop.Name == "tokens" && prop.Value.ValueKind == JsonValueKind.Object)
+                        {
+                            w.WritePropertyName("tokens");
+                            w.WriteStartObject();
+                            foreach (var t in prop.Value.EnumerateObject())
+                            {
+                                if (t.Name == "access_token") { w.WriteString("access_token", newAccessToken); continue; }
+                                if (t.Name == "refresh_token") { w.WriteString("refresh_token", newRefreshToken); continue; }
+                                t.Value.WriteTo(w);
+                            }
+                            w.WriteEndObject();
+                        }
+                        else
+                        {
+                            prop.Value.WriteTo(w);
+                        }
+                    }
+                    w.WriteString("last_refresh", DateTimeOffset.UtcNow.ToString("o"));
+                    w.WriteEndObject();
+                }
+                File.WriteAllText(authPath, System.Text.Encoding.UTF8.GetString(doc.ToArray()));
+            }
+            catch
+            {
+                // Best-effort: if we can't write back, the next poll will re-read the stale file
+                // and surface the normal auth error.
+            }
         }
 
         private static string GetAuthPath()

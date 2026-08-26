@@ -97,7 +97,10 @@ namespace CodexQuota.Controls
                         // Keep the rendered meters, but surface a failed refresh (expired token,
                         // API down) in the caption: freezing the old "Last updated HH:mm" line would
                         // make a permanent failure look silently fresh.
-                        if (!result.IsPending)
+                        //
+                        // Skip the overwrite when the error is already rendered as a row in UsageRows
+                        // (first-paint error path adds it there) — showing it twice is noise.
+                        if (!result.IsPending && !IsErrorAlreadyDisplayed(result.Error))
                             UpdatedText.Text = result.Error ?? AppStrings.Get("Ui.LastUpdatedDash");
                         return;
                     }
@@ -138,6 +141,19 @@ namespace CodexQuota.Controls
             UsageRows.Children.Clear();
             foreach (var row in nextRows)
                 UsageRows.Children.Add(row);
+        }
+
+        /// <summary>Returns true when UsageRows already contains a TextBlock with the same error text.</summary>
+        private bool IsErrorAlreadyDisplayed(string? error)
+        {
+            if (string.IsNullOrEmpty(error))
+                return false;
+            foreach (var child in UsageRows.Children)
+            {
+                if (child is TextBlock tb && tb.Text == error)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Renders the Codex profile's daily token activity as a heatmap grid. Hidden when null.</summary>
