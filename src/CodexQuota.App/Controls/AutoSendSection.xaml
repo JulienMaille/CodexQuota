@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="CodexQuota.Controls.AutoSendSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Spacing="4">
+        <CheckBox x:Name="ArmCheck"
+                  FontSize="12"
+                  MinHeight="20"
+                  MinWidth="0"
+                  Padding="0"
+                  VerticalContentAlignment="Center"
+                  Checked="ArmCheck_Checked"
+                  Unchecked="ArmCheck_Unchecked"/>
+        <CheckBox x:Name="SkipWeeklyCheck"
+                  Margin="20,0,0,0"
+                  FontSize="12"
+                  MinHeight="20"
+                  MinWidth="0"
+                  Padding="0"
+                  VerticalContentAlignment="Center"
+                  Checked="SkipWeeklyCheck_Toggled"
+                  Unchecked="SkipWeeklyCheck_Toggled"/>
+        <TextBlock x:Name="StatusText"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   TextWrapping="Wrap"/>
+    </StackPanel>
+</UserControl>

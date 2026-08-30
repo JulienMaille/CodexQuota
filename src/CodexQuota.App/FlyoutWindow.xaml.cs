@@ -95,6 +95,7 @@ namespace CodexQuota
             UsageCoordinator.Instance.StateChanged += OnStateChanged;
             UsageCoordinator.Instance.ProfileChanged += OnProfileChanged;
             PaceSettings.Changed += OnPaceSettingsChanged;
+            Services.CodexPresence.Instance.Changed += OnCodexPresenceChanged;
 
             // The panel's header hosts the refresh/close buttons now; route them to the flyout's
             // actions (fetch + hide).
@@ -128,6 +129,8 @@ namespace CodexQuota
             WorkdayHoursText.Text = AppStrings.Get("Ui.WorkdayHours");
             ToolTipService.SetToolTip(WorkdayHoursBox, AppStrings.Get("Ui.WorkdayHoursTooltip"));
             ToolTipService.SetToolTip(ImminentCheck, AppStrings.Get("Ui.ImminentTimeTooltip"));
+            NotRunningTitle.Text = AppStrings.Get("Codex.NotRunning");
+            NotRunningDetail.Text = AppStrings.Get("Codex.NotRunningDetail");
         }
 
         private void ToggleAppearanceSection()
@@ -296,6 +299,7 @@ namespace CodexQuota
             UsageCoordinator.Instance.StateChanged -= OnStateChanged;
             UsageCoordinator.Instance.ProfileChanged -= OnProfileChanged;
             PaceSettings.Changed -= OnPaceSettingsChanged;
+            Services.CodexPresence.Instance.Changed -= OnCodexPresenceChanged;
             _appearanceStoryboard?.Stop();
             _boundsUpdateTimer?.Stop();
             _flyoutAnimationTimer?.Stop();
@@ -318,6 +322,21 @@ namespace CodexQuota
         }
 
         private void OnPaceSettingsChanged() => RefreshPanelForAppearance();
+
+        private void OnCodexPresenceChanged(bool running)
+        {
+            if (!DispatcherQueue.TryEnqueue(() => ApplyCodexPresence(running)))
+                ApplyCodexPresence(running);
+        }
+
+        private void ApplyCodexPresence(bool running)
+        {
+            // Swap the auto-send controls for a "Codex isn't running" notice inside the open settings
+            // panel; the appearance checkboxes above stay as they are. Nothing changes in the flyout
+            // base — the notice only appears when the settings are revealed.
+            AutoSendSection.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+            NotRunningBlock.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
+        }
 
         private void OnActivated(object sender, WindowActivatedEventArgs args)
         {
@@ -380,6 +399,7 @@ namespace CodexQuota
             UsagePanel.SetResult(UsageCoordinator.Instance.LastState);
             ApplyProfileAfterPaint(UsageCoordinator.Instance.LastProfile);
             UsagePanel.ApplyLogoBrush();
+            ApplyCodexPresence(Services.CodexPresence.Instance.IsRunning);
 
             var target = ApplyFlyoutBounds();
             if (target is { } start)
@@ -684,6 +704,7 @@ namespace CodexQuota
             _boundsUpdateTimer?.Stop();
             UsageCoordinator.Instance.NotifyFlyoutClosed();
             _restoreForegroundOnClose = explicitClose;
+            CollapseAppearanceSection();
             StartFlyoutAnimation(target, closing: true);
         }
 

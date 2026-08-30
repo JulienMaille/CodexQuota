@@ -105,7 +105,7 @@ namespace CodexQuota
         }
 
         /// <summary>Cheap probe for an actively running Codex CLI; refreshes speed up while it runs.</summary>
-        private static bool IsCodexProcessRunning()
+        internal static bool IsCodexProcessRunning()
         {
             try
             {

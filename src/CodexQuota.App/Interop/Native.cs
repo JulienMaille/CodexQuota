@@ -97,6 +97,9 @@ namespace CodexQuota.Interop
         [DllImport("user32.dll")]
         public static extern IntPtr GetAncestor(IntPtr hwnd, GetAncestorFlags gaFlags);
 
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowText(IntPtr hWnd, [Out] StringBuilder lpString, int nMaxCount);
+
         [DllImport("user32.dll", CharSet = CharSet.Ansi)]
         public static extern int GetClassName(IntPtr hwnd, [Out] StringBuilder lpClassName, int nMaxCount);
 

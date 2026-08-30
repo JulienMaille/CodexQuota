@@ -36,6 +36,15 @@
                 </Viewbox>
                 <TextBlock x:Name="BadgeText" Text="?" FontSize="15" FontWeight="SemiBold"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <!-- Auto-send armed indicator: a green dot in the badge corner, shown only while the
+                     one-shot auto-send is armed (see AutoSendService). Fixed position, so it never
+                     changes the tile width. -->
+                <Ellipse x:Name="ArmedDot"
+                         Width="7" Height="7"
+                         HorizontalAlignment="Right" VerticalAlignment="Top"
+                         Margin="0,2,-3,0"
+                         Visibility="Collapsed"
+                         IsHitTestVisible="False"/>
             </Grid>
         </Grid>
     </Grid>

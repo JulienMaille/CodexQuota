@@ -4,7 +4,7 @@ A native Windows taskbar widget showing your Codex usage quota: remaining sessio
 
 Fork of [TaskbarQuota](https://github.com/zioder/TaskbarQuota) (MIT), trimmed to a single Codex provider (no dashboard, no agent-activity island, no main window).
 
-> Disclaimer: this codebase is mostly vibe-coded, written with AI assistance and heavy iteration. It is still reviewed, planned, and tested (154 unit tests).
+> Disclaimer: this codebase is mostly vibe-coded, written with AI assistance and heavy iteration. It is still reviewed, planned, and tested (159 unit tests).
 
 ## Screenshots
 
@@ -19,6 +19,7 @@ Fork of [TaskbarQuota](https://github.com/zioder/TaskbarQuota) (MIT), trimmed to
 - Profile activity heatmap in the flyout: a GitHub-style grid of daily token squares spanning 22 weeks, with the low-density history filled from local session journals (server data stays authoritative where both exist).
 - Persistent toggles in the flyout (`HKCU\Software\CodexQuota`): icon, progress bars, colored percent (amber at 50% remaining or less, red at 20% or less).
 - Tray menu: Move, Reset position, Refresh, Quit.
+- Auto-send: arm from the flyout, and when the session limit resets the app presses Codex's send button once to submit whatever prompt you already typed in the chat — with an optional "skip if the weekly limit also resets" veto, an empty-input guard, and a green dot on the tile while armed. One-shot; disarms after firing.
 - Auto-starts at logon.
 
 ## Install

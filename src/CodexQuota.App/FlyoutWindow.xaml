@@ -126,6 +126,21 @@
                            ValueChanged="WorkdayHoursBox_ValueChanged"
                            ToolTipService.ToolTip="Assumed coding hours in each 24-hour quota day"/>
             </StackPanel>
+            <controls:AutoSendSection x:Name="AutoSendSection" HorizontalAlignment="Stretch"/>
+            <!-- Replaces the auto-send section (inside the settings panel) while Codex isn't running. -->
+            <StackPanel x:Name="NotRunningBlock"
+                        Visibility="Collapsed"
+                        Spacing="2">
+                <TextBlock x:Name="NotRunningTitle"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"/>
+                <TextBlock x:Name="NotRunningDetail"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>

@@ -114,6 +114,64 @@ namespace CodexQuota.Controls
             // The tile is intentionally click-only. Keep activation as a Tapped gesture so the
             // taskbar host does not need to expose raw pointer handling here.
             Tapped += (_, _) => Clicked?.Invoke();
+
+            // Auto-send armed / Codex liveness dot, right in the badge corner. Green while the
+            // one-shot auto-send is armed and Codex is up; red when Codex isn't running (the armed
+            // state cannot fire then, so the red takes priority); hidden otherwise.
+            Services.CodexPresence.Instance.Changed += OnCodexPresenceChanged;
+            _codexRunning = Services.CodexPresence.Instance.IsRunning;
+            Services.AutoSendService.Instance.StatusChanged += OnAutoSendStatusChanged;
+            ApplyAutoSendStatus(Services.AutoSendService.Instance.Status);
+        }
+
+        private static readonly SolidColorBrush ArmedDotBrush = new(Color.FromArgb(255, 0x2E, 0xA0, 0x43));
+        private static readonly SolidColorBrush OfflineDotBrush = new(Color.FromArgb(255, 0xC4, 0x2B, 0x1C));
+        private bool _autoSendArmed;
+        private bool _codexRunning = true;
+
+        private void OnAutoSendStatusChanged(Services.AutoSendStatus status)
+        {
+            if (!DispatcherQueue.TryEnqueue(() => ApplyAutoSendStatus(status)))
+                ApplyAutoSendStatus(status);
+        }
+
+        private void ApplyAutoSendStatus(Services.AutoSendStatus status)
+        {
+            _autoSendArmed = status.State != Services.AutoSendState.Idle;
+            UpdateArmedDot();
+        }
+
+        private void OnCodexPresenceChanged(bool running)
+        {
+            if (!DispatcherQueue.TryEnqueue(() => ApplyCodexPresence(running)))
+                ApplyCodexPresence(running);
+        }
+
+        private void ApplyCodexPresence(bool running)
+        {
+            _codexRunning = running;
+            UpdateArmedDot();
+        }
+
+        private void UpdateArmedDot()
+        {
+            if (!_codexRunning)
+            {
+                ArmedDot.Fill = OfflineDotBrush;
+                ArmedDot.Visibility = Visibility.Visible;
+                ToolTipService.SetToolTip(ArmedDot, AppStrings.Get("Codex.NotRunning"));
+            }
+            else if (_autoSendArmed)
+            {
+                ArmedDot.Fill = ArmedDotBrush;
+                ArmedDot.Visibility = Visibility.Visible;
+                ToolTipService.SetToolTip(ArmedDot, AppStrings.Get("AutoSend.ArmedTooltip"));
+            }
+            else
+            {
+                ArmedDot.Visibility = Visibility.Collapsed;
+                ToolTipService.SetToolTip(ArmedDot, null);
+            }
         }
 
         // B1: the appearance Changed event is static, so an unsubscribed summary is rooted forever and
@@ -123,6 +181,8 @@ namespace CodexQuota.Controls
         {
             WidgetAppearanceSettings.Changed -= OnAppearanceChanged;
             SystemThemeWatcher.Changed -= OnSystemThemeChanged;
+            Services.AutoSendService.Instance.StatusChanged -= OnAutoSendStatusChanged;
+            Services.CodexPresence.Instance.Changed -= OnCodexPresenceChanged;
         }
 
         /// <summary>Re-renders the tile when the taskbar theme flips (dark/light mode switch).</summary>

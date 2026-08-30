@@ -45,6 +45,8 @@ namespace CodexQuota
             StartupSettingsService.Apply(true);
 
             UsageCoordinator.Instance.Start();
+            Services.AutoSendService.Instance.Start();
+            Services.CodexPresence.Instance.Start();
             ScheduleTaskbarInitialization();
         }
 
