@@ -16,22 +16,29 @@
 
         <!-- The appearance section floats over the usage content (same grid cell, drawn on top): it
              never contributes to the flyout height, and the window does not grow or shrink when it
-             reveals. -->
+             reveals. Compact sizing (the WinUI density dictionary) is scoped to this floating panel so
+             the settings read as dense desktop chrome over the acrylic backdrop. -->
         <StackPanel x:Name="AppearanceSection"
                     Margin="16,6,16,12"
-                    Padding="14,10,14,12"
-                    Spacing="8"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Bottom"
-                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                    CornerRadius="8"
                     Visibility="Collapsed">
             <StackPanel.RenderTransform>
                 <TranslateTransform x:Name="AppearanceSectionTransform"/>
             </StackPanel.RenderTransform>
-            <Border Height="1"
-                    Margin="0,0,0,2"
-                    Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+            <StackPanel.Resources>
+                <ResourceDictionary>
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceDictionary Source="ms-appx:///Microsoft.UI.Xaml/DensityStyles/Compact.xaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+            </StackPanel.Resources>
+            <Border Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14,10,14,12">
+                <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal"
                         Spacing="10"
                         HorizontalAlignment="Left">
@@ -39,7 +46,7 @@
                           Content="Icon"
                           FontSize="12"
                           MinHeight="20"
-                          Padding="0"
+                          Padding="6,0,0,0"
                           VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
@@ -50,7 +57,7 @@
                           Content="Bars"
                           FontSize="12"
                           MinHeight="20"
-                          Padding="0"
+                          Padding="6,0,0,0"
                           VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
@@ -61,7 +68,7 @@
                           Content="Color %"
                           FontSize="12"
                           MinHeight="20"
-                          Padding="0"
+                          Padding="6,0,0,0"
                           VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
@@ -72,7 +79,7 @@
                           Content="Exact time"
                           FontSize="12"
                           MinHeight="20"
-                          Padding="0"
+                          Padding="6,0,0,0"
                           VerticalContentAlignment="Center"
                           MinWidth="0"
                           VerticalAlignment="Center"
@@ -141,6 +148,8 @@
                            Style="{StaticResource CaptionTextBlockStyle}"
                            TextWrapping="Wrap"/>
             </StackPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Grid>
 </Window>

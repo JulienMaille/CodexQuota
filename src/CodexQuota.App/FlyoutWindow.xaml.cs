@@ -135,68 +135,94 @@ namespace CodexQuota
 
         private void ToggleAppearanceSection()
         {
-            _appearanceSectionVisible = !_appearanceSectionVisible;
+            if (_appearanceSectionVisible)
+                CollapseAppearanceSection();
+            else
+                RevealAppearanceSection();
+        }
+
+        private void RevealAppearanceSection()
+        {
+            _appearanceSectionVisible = true;
+            UsagePanel.SetSettingsActive(true);
 
             _appearanceStoryboard?.Stop();
             var storyboard = new Storyboard();
 
-            if (_appearanceSectionVisible)
+            // Reveal: the section fades up over the content at the bottom of the window (overlay —
+            // it never contributes to the flyout height).
+            AppearanceSection.Visibility = Visibility.Visible;
+            AppearanceSection.Opacity = 0;
+            AppearanceSectionTransform.Y = 12;
+
+            var fade = new DoubleAnimation
             {
-                // Reveal: the section fades up over the content at the bottom of the window (overlay —
-                // it never contributes to the flyout height).
-                AppearanceSection.Visibility = Visibility.Visible;
-                AppearanceSection.Opacity = 0;
-                AppearanceSectionTransform.Y = 12;
+                From = 0,
+                To = 1,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
+            };
+            Storyboard.SetTarget(fade, AppearanceSection);
+            Storyboard.SetTargetProperty(fade, "Opacity");
 
-                var fade = new DoubleAnimation
-                {
-                    From = 0,
-                    To = 1,
-                    Duration = new Duration(TimeSpan.FromMilliseconds(180)),
-                    EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
-                };
-                Storyboard.SetTarget(fade, AppearanceSection);
-                Storyboard.SetTargetProperty(fade, "Opacity");
-
-                var slide = new DoubleAnimation
-                {
-                    From = 12,
-                    To = 0,
-                    Duration = new Duration(TimeSpan.FromMilliseconds(180)),
-                    EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
-                };
-                Storyboard.SetTarget(slide, AppearanceSectionTransform);
-                Storyboard.SetTargetProperty(slide, "Y");
-
-                storyboard.Children.Add(fade);
-                storyboard.Children.Add(slide);
-                storyboard.Completed += (_, _) =>
-                {
-                    AppearanceSection.Opacity = 1;
-                    AppearanceSectionTransform.Y = 0;
-                };
-            }
-            else
+            var slide = new DoubleAnimation
             {
-                // Collapse: fade the section out, then remove it from layout.
-                var fade = new DoubleAnimation
-                {
-                    From = 1,
-                    To = 0,
-                    Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-                    EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseIn },
-                };
-                Storyboard.SetTarget(fade, AppearanceSection);
-                Storyboard.SetTargetProperty(fade, "Opacity");
+                From = 12,
+                To = 0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
+            };
+            Storyboard.SetTarget(slide, AppearanceSectionTransform);
+            Storyboard.SetTargetProperty(slide, "Y");
 
-                storyboard.Children.Add(fade);
-                storyboard.Completed += (_, _) =>
-                {
-                    AppearanceSection.Visibility = Visibility.Collapsed;
-                    AppearanceSection.Opacity = 1;
-                    AppearanceSectionTransform.Y = 0;
-                };
+            storyboard.Children.Add(fade);
+            storyboard.Children.Add(slide);
+            storyboard.Completed += (_, _) =>
+            {
+                AppearanceSection.Opacity = 1;
+                AppearanceSectionTransform.Y = 0;
+            };
+
+            _appearanceStoryboard = storyboard;
+            storyboard.Begin();
+        }
+
+        // Collapses the section without toggling: sets the open flag false so the section does not
+        // reappear revealed after the flyout reopens. Runs the same fade-out as the toggle path.
+        private void CollapseAppearanceSection()
+        {
+            _appearanceSectionVisible = false;
+            UsagePanel.SetSettingsActive(false);
+
+            _appearanceStoryboard?.Stop();
+            if (AppearanceSection.Visibility != Visibility.Visible)
+            {
+                AppearanceSection.Visibility = Visibility.Collapsed;
+                AppearanceSection.Opacity = 1;
+                AppearanceSectionTransform.Y = 0;
+                return;
             }
+
+            var storyboard = new Storyboard();
+
+            // Collapse: fade the section out, then remove it from layout.
+            var fade = new DoubleAnimation
+            {
+                From = 1,
+                To = 0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(140)),
+                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseIn },
+            };
+            Storyboard.SetTarget(fade, AppearanceSection);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+
+            storyboard.Children.Add(fade);
+            storyboard.Completed += (_, _) =>
+            {
+                AppearanceSection.Visibility = Visibility.Collapsed;
+                AppearanceSection.Opacity = 1;
+                AppearanceSectionTransform.Y = 0;
+            };
 
             _appearanceStoryboard = storyboard;
             storyboard.Begin();

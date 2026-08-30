@@ -245,7 +245,7 @@ internal static partial class AppStrings
                 ["Time.Hour"] = "h",
                 ["Time.Minute"] = "min",
                 ["Time.Now"] = "maintenant",
-                ["Time.UnitSeparator"] = " ",
+                ["Time.UnitSeparator"] = "",
                 ["Ui.AppearanceBars"] = "Barres",
                 ["Ui.AppearanceColorPercent"] = "Couleur %",
                 ["Ui.AppearanceIcon"] = "Icône",

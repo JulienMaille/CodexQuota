@@ -9,7 +9,7 @@
                   FontSize="12"
                   MinHeight="20"
                   MinWidth="0"
-                  Padding="0"
+                  Padding="6,0,0,0"
                   VerticalContentAlignment="Center"
                   Checked="ArmCheck_Checked"
                   Unchecked="ArmCheck_Unchecked"/>
@@ -18,7 +18,7 @@
                   FontSize="12"
                   MinHeight="20"
                   MinWidth="0"
-                  Padding="0"
+                  Padding="6,0,0,0"
                   VerticalContentAlignment="Center"
                   Checked="SkipWeeklyCheck_Toggled"
                   Unchecked="SkipWeeklyCheck_Toggled"/>

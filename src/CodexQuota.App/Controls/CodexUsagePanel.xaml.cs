@@ -49,6 +49,15 @@ namespace CodexQuota.Controls
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
 
+        /// <summary>
+        /// Mirrors whether the flyout's appearance/settings section is open onto the settings toggle
+        /// button, so its checked (active) visual state stays consistent even when the section is
+        /// collapsed externally — e.g. when the flyout hides. The button's own IsChecked is managed here
+        /// rather than by its Click (which only raises <see cref="SettingsRequested"/>) so the icon is
+        /// never left showing the wrong state.
+        /// </summary>
+        internal void SetSettingsActive(bool active) => SettingsButton.IsChecked = active;
+
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
             // The coordinator's fetch is fire-and-forget; show feedback immediately so a refresh
