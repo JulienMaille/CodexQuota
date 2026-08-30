@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>速率 · 已达到上限 · 于 {0} 重置</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>速率 ~{0}%/天 → 上限 {1}（约 {2:0.#} 天）</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>速率 ~{0}%/天 · 在达到上限前重置</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>会话重置时发送当前输入</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>下一次会话重置时，按一次 Codex 的发送按钮，将聊天中当前输入的内容提交</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>已启用自动发送：将在下一次会话重置时提交当前输入的内容</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>周配额也重置时不发送</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>当周配额同时重置时跳过发送</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>自动发送未启用</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>已启用自动发送: 将于下一次会话重置时触发（{0}）</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>已启用自动发送: 正在确认重置…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>自动发送：已于 {0} 发送输入</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>自动发送于 {0} 跳过: 周配额也已重置</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>自动发送于 {0} 跳过: 聊天输入为空</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>自动发送于 {0} 失败: 找不到 Codex 窗口</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>自动发送于 {0} 失败: 找不到发送按钮</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>自动发送于 {0} 失败</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>自动发送于 {0} 停止: 未检测到重置</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>无法启用自动发送：尚无会话重置时间</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex 未在运行</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>请打开 Codex 应用，以便下一次重置时自动发送按下发送按钮。</value></data>
 </root>

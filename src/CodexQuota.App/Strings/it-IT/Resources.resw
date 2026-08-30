@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>Ritmo · limite raggiunto · si reimposta il {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Ritmo ~{0}% della quota/giorno → limite {1} (~{2:0.#} g)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Ritmo ~{0}% della quota/giorno · si reimposta prima del limite</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Invia la domanda digitata quando la sessione si reimposta</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>Al prossimo ripristino della sessione, premi una volta il pulsante di invio di Codex per inviare la domanda attualmente digitata nella chat</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Invio automatico attivato: invierà la domanda digitata al prossimo ripristino della sessione</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>Non se si reimposta anche il limite settimanale</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Salta l'invio quando il limite settimanale si reimposta nello stesso momento</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Invio automatico non attivato</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Invio automatico attivato: scatta al prossimo ripristino della sessione ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Invio automatico attivato: conferma del ripristino…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Invio automatico: domanda inviata alle {0}</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Invio automatico saltato alle {0}: si è reimpostato anche il limite settimanale</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Invio automatico saltato alle {0}: il campo di chat era vuoto</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Invio automatico non riuscito alle {0}: finestra di Codex non trovata</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Invio automatico non riuscito alle {0}: pulsante di invio non trovato</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Invio automatico non riuscito alle {0}</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Invio automatico interrotto alle {0}: nessun ripristino osservato</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Impossibile attivare l'invio automatico: nessun orario di ripristino della sessione disponibile</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex non è in esecuzione</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Apri l'app Codex per consentire all'invio automatico di premere Invia al prossimo ripristino.</value></data>
 </root>

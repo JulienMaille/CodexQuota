@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>Ritmo · límite alcanzado · se reinicia el {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Ritmo ~{0}% de la cuota/día → límite {1} (~{2:0.#} d)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Ritmo ~{0}% de la cuota/día · se reinicia antes del límite</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Enviar el mensaje escrito cuando se reinicie la sesión</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>En el próximo reinicio de sesión, pulsa una vez el botón de enviar de Codex para enviar el mensaje que tengas escrito en el chat</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Envío automático activado: enviará el mensaje escrito en el próximo reinicio de sesión</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>No si el límite semanal también se reinicia</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Omitir el envío cuando el límite semanal se reinicia al mismo tiempo</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Envío automático no activado</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Envío automático activado: se dispara en el próximo reinicio de sesión ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Envío automático activado: confirmando el reinicio…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Envío automático: mensaje enviado a las {0}</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Envío automático omitido a las {0}: el límite semanal también se reinició</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Envío automático omitido a las {0}: el campo de chat estaba vacío</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Envío automático falló a las {0}: no se encontró la ventana de Codex</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Envío automático falló a las {0}: no se encontró el botón de enviar</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Envío automático falló a las {0}</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Envío automático detenido a las {0}: no se observó ningún reinicio</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>No se pudo activar el envío automático: aún no hay hora de reinicio de sesión disponible</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex no se está ejecutando</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Abre la aplicación Codex para que el envío automático pulse Enviar en el próximo reinicio.</value></data>
 </root>

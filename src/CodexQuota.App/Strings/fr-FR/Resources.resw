@@ -59,11 +59,29 @@
   <data name="Time.Day" xml:space="preserve"><value>j</value></data>
   <data name="Time.Hour" xml:space="preserve"><value>h</value></data>
   <data name="Time.Minute" xml:space="preserve"><value>min</value></data>
-  <data name="Time.UnitSeparator" xml:space="preserve"><value> </value></data>
+  <data name="Time.UnitSeparator" xml:space="preserve"><value></value></data>
   <data name="Widget.Loading" xml:space="preserve"><value>Chargement…</value></data>
   <data name="Widget.LoadingActiveProvider" xml:space="preserve"><value>Chargement du fournisseur actif…</value></data>
   <data name="Widget.Unavailable" xml:space="preserve"><value>Indisponible</value></data>
   <data name="Pace.CapReached" xml:space="preserve"><value>Rythme · plafond atteint · réinit. le {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Rythme ~{0} % du quota/jour → plafond {1} (~{2:0.#} j)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Rythme ~{0} % du quota/jour · réinit. avant le plafond</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Envoyer la saisie à la prochaine réinit. de session</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>À la prochaine réinitialisation de session, appuyez une fois sur le bouton d’envoi de Codex pour soumettre la saisie actuellement tapée dans le chat</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Envoi auto armé : la saisie tapée sera soumise à la prochaine réinitialisation de session</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>Pas si le quota hebdo se réinitialise aussi</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Ne pas envoyer lorsque le quota hebdomadaire est réinitialisé en même temps</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Envoi auto non armé</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Envoi auto armé: se déclenche à la prochaine réinit. de session ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Envoi auto armé: confirmation de la réinitialisation…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Envoi auto : saisie envoyée à {0}</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Envoi auto ignoré à {0}: le quota hebdo a aussi été réinitialisé</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Envoi auto ignoré à {0}: la saisie du chat était vide</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Envoi auto échoué à {0}: fenêtre Codex introuvable</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Envoi auto échoué à {0}: bouton d’envoi introuvable</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Envoi auto échoué à {0}</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Envoi auto arrêté à {0}: aucune réinitialisation observée</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Impossible d’armer l’envoi auto : aucune heure de réinitialisation de session n’est encore disponible</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex n’est pas en cours d’exécution</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Ouvrez l’application Codex pour que l’envoi auto appuie sur Envoyer à la prochaine réinitialisation.</value></data>
 </root>

@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>Темп · лимит достигнут · сброс {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Темп ~{0} % квоты/день → лимит {1} (~{2:0.#} д)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Темп ~{0} % квоты/день · сброс до достижения лимита</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Отправлять введённый запрос при сбросе сеанса</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>При следующем сбросе сеанса один раз нажать кнопку отправки Codex, чтобы отправить введённый в чате запрос</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Автоотправка включена: введённый запрос будет отправлен при следующем сбросе сеанса</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>Не отправлять, если недельный лимит тоже сбрасывается</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Пропустить отправку, если недельный лимит сбрасывается одновременно</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Автоотправка не включена</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Автоотправка включена: сработает при следующем сбросе сеанса ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Автоотправка включена: подтверждение сброса…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Автоотправка: запрос отправлен в {0}</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Автоотправка пропущена в {0}: недельный лимит тоже был сброшен</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Автоотправка пропущена в {0}: поле чата было пустым</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Автоотправка не удалась в {0}: окно Codex не найдено</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Автоотправка не удалась в {0}: кнопка отправки не найдена</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Автоотправка не удалась в {0}</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Автоотправка остановлена в {0}: сброс не обнаружен</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Не удалось включить автоотправку: время сброса сеанса ещё недоступно</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex не запущен</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Откройте приложение Codex, чтобы автоотправка могла нажать «Отправить» при следующем сбросе.</value></data>
 </root>

@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>Tempo · Limit erreicht · wird am {0} zurückgesetzt</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Tempo ~{0} % des Kontingents/Tag → Limit {1} (~{2:0.#} T)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Tempo ~{0} % des Kontingents/Tag · Zurücksetzung vor dem Limit</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Getippte Eingabe senden, wenn die Sitzung zurückgesetzt wird</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>Beim nächsten Sitzungs-Reset einmal die Sendetaste von Codex drücken, um die aktuell getippte Chat-Eingabe zu senden</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Auto-Senden aktiviert: die getippte Eingabe wird beim nächsten Sitzungs-Reset gesendet</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>Nicht, wenn auch das Wochenlimit zurückgesetzt wird</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Das Senden überspringen, wenn das Wochenlimit zur gleichen Zeit zurückgesetzt wird</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Auto-Senden nicht aktiviert</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Auto-Senden aktiviert: wird beim nächsten Sitzungs-Reset ausgelöst ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Auto-Senden aktiviert: Reset wird bestätigt…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Auto-Senden: Eingabe um {0} gesendet</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Auto-Senden um {0} übersprungen: Wochenlimit wurde ebenfalls zurückgesetzt</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Auto-Senden um {0} übersprungen: Chat-Eingabe war leer</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Auto-Senden um {0} fehlgeschlagen: Codex-Fenster nicht gefunden</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Auto-Senden um {0} fehlgeschlagen: Sendetaste nicht gefunden</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Auto-Senden um {0} fehlgeschlagen</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Auto-Senden um {0} gestoppt: kein Reset beobachtet</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Auto-Senden konnte nicht aktiviert werden: noch keine Sitzungs-Reset-Zeit verfügbar</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex wird nicht ausgeführt</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Öffnen Sie die Codex-App, damit Auto-Senden beim nächsten Reset auf Senden drücken kann.</value></data>
 </root>

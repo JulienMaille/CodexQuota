@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>ペース · 上限到達 · {0}にリセット</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>ペース ~{0}%/日 → 上限 {1}（約{2:0.#}日）</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>ペース ~{0}%/日 · 上限前にリセット</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>セッションのリセット時に入力中のプロンプトを送信</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>次のセッションのリセット時に、Codexの送信ボタンを一度押して、チャットに入力中のプロンプトを送信します</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>自動送信が有効：次のセッションのリセット時に入力中のプロンプトを送信します</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>週次リセットも同時の場合は送信しない</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>週次リセットが同時にある場合は送信をスキップします</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>自動送信は無効です</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>自動送信が有効: 次のセッションのリセット時に発動します（{0}）</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>自動送信が有効: リセットを確認中…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>自動送信：{0}にプロンプトを送信しました</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>自動送信を{0}にスキップ: 週次リセットも同時でした</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>自動送信を{0}にスキップ: チャット入力が空でした</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>自動送信が{0}に失敗: Codexウィンドウが見つかりません</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>自動送信が{0}に失敗: 送信ボタンが見つかりません</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>自動送信が{0}に失敗しました</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>自動送信は{0}に停止: リセットを検出できませんでした</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>自動送信を有効にできません：セッションのリセット時刻がまだありません</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codexが実行されていません</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>次のリセットで自動送信が送信ボタンを押せるように、Codexアプリを開いてください。</value></data>
 </root>

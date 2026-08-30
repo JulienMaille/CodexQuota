@@ -66,4 +66,22 @@
   <data name="Pace.CapReached" xml:space="preserve"><value>Pace · cap reached · resets {0}</value></data>
   <data name="Pace.CapBeforeReset" xml:space="preserve"><value>Pace ~{0}% quota/day → cap {1} (~{2:0.#}d)</value></data>
   <data name="Pace.ResetsBeforeCap" xml:space="preserve"><value>Pace ~{0}% quota/day · resets before cap</value></data>
+  <data name="AutoSend.Arm" xml:space="preserve"><value>Send typed prompt when session resets</value></data>
+  <data name="AutoSend.ArmTooltip" xml:space="preserve"><value>At the next session reset, press Codex's send button once to submit the prompt currently typed in the chat</value></data>
+  <data name="AutoSend.ArmedTooltip" xml:space="preserve"><value>Auto-send armed: will submit the typed prompt at the next session reset</value></data>
+  <data name="AutoSend.SkipWeekly" xml:space="preserve"><value>Not if the weekly limit also resets</value></data>
+  <data name="AutoSend.SkipWeeklyTooltip" xml:space="preserve"><value>Skip the send when the weekly limit resets at the same time</value></data>
+  <data name="AutoSend.StatusIdle" xml:space="preserve"><value>Auto-send not armed</value></data>
+  <data name="AutoSend.StatusArmed" xml:space="preserve"><value>Auto-send armed: fires at next session reset ({0})</value></data>
+  <data name="AutoSend.StatusConfirming" xml:space="preserve"><value>Auto-send armed: confirming the reset…</value></data>
+  <data name="AutoSend.StatusSent" xml:space="preserve"><value>Auto-send: prompt sent at {0}</value></data>
+  <data name="AutoSend.StatusSkippedWeekly" xml:space="preserve"><value>Auto-send skipped at {0}: weekly limit also reset</value></data>
+  <data name="AutoSend.StatusEmptyPrompt" xml:space="preserve"><value>Auto-send skipped at {0}: chat input was empty</value></data>
+  <data name="AutoSend.StatusNoWindow" xml:space="preserve"><value>Auto-send failed at {0}: Codex window not found</value></data>
+  <data name="AutoSend.StatusNoButton" xml:space="preserve"><value>Auto-send failed at {0}: send button not found</value></data>
+  <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Auto-send failed at {0}</value></data>
+  <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Auto-send stopped at {0}: reset was not observed</value></data>
+  <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Auto-send could not arm: no session reset time is available yet</value></data>
+  <data name="Codex.NotRunning" xml:space="preserve"><value>Codex isn't running</value></data>
+  <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Open the Codex app for auto-send to press Send at the next reset.</value></data>
 </root>

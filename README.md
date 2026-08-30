@@ -19,7 +19,7 @@ Fork of [TaskbarQuota](https://github.com/zioder/TaskbarQuota) (MIT), trimmed to
 - Profile activity heatmap in the flyout: a GitHub-style grid of daily token squares spanning 22 weeks, with the low-density history filled from local session journals (server data stays authoritative where both exist).
 - Persistent toggles in the flyout (`HKCU\Software\CodexQuota`): icon, progress bars, colored percent (amber at 50% remaining or less, red at 20% or less).
 - Tray menu: Move, Reset position, Refresh, Quit.
-- Auto-send: arm from the flyout, and when the session limit resets the app presses Codex's send button once to submit whatever prompt you already typed in the chat — with an optional "skip if the weekly limit also resets" veto, an empty-input guard, and a green dot on the tile while armed. One-shot; disarms after firing.
+- Auto-send: When the session limit resets the app presses Codex's send button once to submit whatever prompt you already typed in the chat. One-shot: disarms after firing.
 - Auto-starts at logon.
 
 ## Install
@@ -40,7 +40,7 @@ dotnet publish src/CodexQuota.App/CodexQuota.App.csproj -c Release -r win-x64 --
 
 ## How it gets data
 
-The app runs on your PC; the only network traffic is a direct call to OpenAI's ChatGPT usage API with your own Codex token (`chatgpt.com/backend-api/wham/usage`, plus the reset-credits and profile endpoints). Token read from `%USERPROFILE%\.codex\auth.json` (or `%CODEX_HOME%`), used in memory only. `chatgpt_base_url` in `~/.codex/config.toml` overrides the endpoint. No telemetry or cookies. The app locally checks whether a `codex` process is running only to choose a faster refresh cadence; process names and details never leave the machine. It also reads local token-count events from `%USERPROFILE%\.codex\sessions` (or `%CODEX_HOME%\sessions`) to fill the days the profile endpoint does not report — that endpoint's window is ~8 weeks, so the 22-week heatmap's older days come from these journals; only aggregated token counts are used, and server buckets stay authoritative where both exist.
+The app runs on your PC; the only network traffic is a direct call to OpenAI's ChatGPT usage API with your own Codex token (`chatgpt.com/backend-api/wham/usage`, plus the reset-credits and profile endpoints). Token read from `%USERPROFILE%\.codex\auth.json` (or `%CODEX_HOME%`), used in memory only. `chatgpt_base_url` in `~/.codex/config.toml` overrides the endpoint. No telemetry or cookies. The app locally checks whether a `codex` process is running only to choose a faster refresh cadence; process names and details never leave the machine. It also reads local token-count events from `%USERPROFILE%\.codex\sessions` (or `%CODEX_HOME%\sessions`) to fill the days the profile endpoint does not report: that endpoint's window is ~8 weeks, so the 22-week heatmap's older days come from these journals; only aggregated token counts are used, and server buckets stay authoritative where both exist.
 
 Logs to `%TEMP%\CodexQuota.log`; usage snapshots persist to `%LOCALAPPDATA%\CodexQuota\usage-snapshots.json`.
 
