@@ -198,9 +198,12 @@ public sealed class AutoSendService
     public void Arm(AutoSendMode mode)
     {
         var snapshot = _getSnapshot();
-        if (snapshot?.HasPrimaryWindow != true || snapshot.Primary.ResetAt is not { } resetAt)
+        // A reset that is already in the past can never be "the next" reset — the snapshot is stale,
+        // and arming against it would fire immediately. Reject it like a missing reset time.
+        if (snapshot?.HasPrimaryWindow != true || snapshot.Primary.ResetAt is not { } resetAt
+            || resetAt <= _utcNow())
         {
-            Log.Warning("Auto-send arm rejected: no session reset time in the current snapshot");
+            Log.Warning("Auto-send arm rejected: no future session reset time in the current snapshot");
             FinishLocked(outcome: AutoSendOutcome.ArmRejected, detail: "no session reset time available");
             return;
         }
@@ -265,19 +268,35 @@ public sealed class AutoSendService
 
                 // The server moved the target (manual reset, plan change); chase it.
                 if (primaryResetAt != _target)
-                {
-                    _target = primaryResetAt;
-                    _store.TargetResetAtUtcTicks = primaryResetAt.UtcTicks;
-                    RescheduleTrigger();
-                    PublishStatus();
-                }
+                    ChaseTarget(primaryResetAt);
 
+                return;
+            }
+
+            // The reported reset moved past the armed target. That alone is NOT the reset having
+            // happened: the API slides the session reset forward as traffic flows, so a poll moments
+            // after arming can already report a later reset (which previously fired the trigger and
+            // disarmed the feature minutes early). Only treat the armed reset as confirmed once the
+            // wall clock has actually reached the target; until then chase the sliding target so the
+            // eventual fire is still anchored to the real window.
+            if (_utcNow() < _target)
+            {
+                ChaseTarget(primaryResetAt);
                 return;
             }
         }
 
-        // A regular poll already observed the session reset: confirm immediately, no extra fetch.
+        // A poll that arrived after the armed reset time observed it: confirm immediately, no extra fetch.
         _ = ConfirmAndFireAsync(usage);
+    }
+
+    /// <summary>Re-anchors the armed target (and its persisted copy) to a reset time the API now reports.</summary>
+    private void ChaseTarget(DateTimeOffset primaryResetAt)
+    {
+        _target = primaryResetAt;
+        _store.TargetResetAtUtcTicks = primaryResetAt.UtcTicks;
+        RescheduleTrigger();
+        PublishStatus();
     }
 
     private void RescheduleTrigger()

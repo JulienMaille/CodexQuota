@@ -66,9 +66,12 @@ public class AutoSendServiceTests
         public ManualScheduler Scheduler = new();
         public UsageSnapshot? Snapshot;
         public int ForceFetchCount;
+        public DateTimeOffset Now;
 
         public AutoSendService Create(DateTimeOffset now)
-            => new(
+        {
+            Now = now;
+            return new AutoSendService(
                 Sender,
                 Store,
                 getSnapshot: () => Snapshot,
@@ -77,8 +80,9 @@ public class AutoSendServiceTests
                     ForceFetchCount++;
                     return Task.CompletedTask;
                 },
-                utcNow: () => now,
+                utcNow: () => Now,
                 scheduler: Scheduler);
+        }
     }
 
     private static UsageSnapshot SessionSnapshot(
@@ -127,13 +131,45 @@ public class AutoSendServiceTests
         service.Arm(AutoSendMode.Always);
         Assert.Equal(0, h.ForceFetchCount);
 
-        // A poll after the reset crossfades in; no forced refresh is needed.
+        // A poll after the reset crossfades in; no forced refresh is needed. The armed reset time
+        // must have passed in wall-clock terms for the poll to count as observing the reset.
+        h.Now = ResetAt.AddSeconds(30);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
         service.OnStateChanged(OkResult(h.Snapshot));
 
         await WaitForOutcome(service, AutoSendOutcome.Sent);
         Assert.Equal(1, h.Sender.InvokeCount);
         Assert.Equal(0, h.ForceFetchCount);
+    }
+
+    [Fact]
+    public async Task SlidingResetTimeDoesNotFireBeforeTheTarget()
+    {
+        var h = new Harness();
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        Assert.Equal(TimeSpan.FromSeconds(110), h.Scheduler.LastDelay);
+
+        // The API slides the session reset forward as traffic flows: a mid-wait poll now reports a
+        // later reset. That is not the reset having happened — stay armed, chase the new target.
+        h.Snapshot = SessionSnapshot(ResetAt.AddMinutes(1));
+        service.OnStateChanged(OkResult(h.Snapshot));
+
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+        Assert.Equal(ResetAt.AddMinutes(1), service.Status.TargetResetAt);
+        Assert.Equal(0, h.Sender.InvokeCount);
+        Assert.Equal(0, h.ForceFetchCount);
+
+        // Once the wall clock passes the (chased) target, a poll can confirm and fire.
+        h.Now = ResetAt.AddMinutes(2);
+        h.Snapshot = SessionSnapshot(ResetAt.AddMinutes(1).AddHours(5));
+        service.OnStateChanged(OkResult(h.Snapshot));
+
+        await WaitForOutcome(service, AutoSendOutcome.Sent);
+        Assert.Equal(1, h.Sender.InvokeCount);
+        Assert.True(h.Store.Armed == false);
     }
 
     [Fact]
@@ -302,6 +338,22 @@ public class AutoSendServiceTests
         Assert.Equal(AutoSendOutcome.ArmRejected, service.Status.Outcome);
         Assert.False(h.Store.Armed);
         Assert.False(service.Status.TargetResetAt is { });
+    }
+
+    [Fact]
+    public void ArmRejectedForAlreadyPastResetTime()
+    {
+        var h = new Harness();
+        var service = h.Create(ResetAt.AddHours(5));
+        // The snapshot reports a reset that is already in the past (stale/restored data): arming
+        // against it would fire immediately, so it must be rejected like a missing reset time.
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+
+        Assert.Equal(AutoSendOutcome.ArmRejected, service.Status.Outcome);
+        Assert.False(h.Store.Armed);
+        Assert.Equal(0, h.Sender.InvokeCount);
     }
 
     [Fact]
