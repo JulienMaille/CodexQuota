@@ -163,11 +163,34 @@ namespace CodexQuota.Controls
             if (profile is null)
                 return;
 
+            var columns = BuildHeatmapRows(profile);
+            RenderProfileRows(profile, columns);
+        }
+
+        /// <summary>
+        /// Pure data step of <see cref="SetProfile"/>: merges local journals into the server buckets and
+        /// lays out the heatmap columns. Thread-safe (no UI access), so the flyout runs it on a worker to
+        /// keep the journal scan off the UI thread. The returned rows are handed to
+        /// <see cref="RenderProfileRows"/> on the UI thread.
+        /// </summary>
+        internal static IReadOnlyList<IReadOnlyList<ProfileHeatmapLayout.DayCell>> BuildHeatmapRows(
+            CodexProfileSnapshot profile)
+            => ProfileHeatmapLayout.Build(MergeLocalHistory(profile.DailyUsageBuckets));
+
+        /// <summary>
+        /// UI-step of the profile render: builds the heatmap XAML from pre-laid-out columns and swaps it
+        /// into place. Must run on the UI thread.
+        /// </summary>
+        internal void RenderProfileRows(
+            CodexProfileSnapshot profile,
+            IReadOnlyList<IReadOnlyList<ProfileHeatmapLayout.DayCell>> columns)
+        {
+            ProfileSection.Visibility = Visibility.Visible;
+
             ProfileAsOfText.Text = profile.StatsAsOf is { } asOf
                 ? AppStrings.Format(profile.TodayUsageIsLocal ? "Ui.ProfileAsOfLive" : "Ui.ProfileAsOf", asOf)
                 : profile.TodayUsageIsLocal ? AppStrings.Get("Ui.LiveLocalSessions") : string.Empty;
 
-            var columns = ProfileHeatmapLayout.Build(MergeLocalHistory(profile.DailyUsageBuckets));
             var next = new List<UIElement>(columns.Count);
 
             long maxTokens = 0;

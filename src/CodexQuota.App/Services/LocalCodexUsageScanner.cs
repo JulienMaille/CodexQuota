@@ -17,14 +17,29 @@ internal static class LocalCodexUsageScanner
     /// <summary>How long a range scan result is reused before the journals are re-read.</summary>
     public static readonly TimeSpan CacheAge = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Width, in weeks, of the canonical journal window scanned and cached on any miss. Must be at least
+    /// the flyout heatmap window (<c>ProfileHeatmapLayout.MaxWeeks</c> = 22, plus room to anchor to the
+    /// containing week) so a single scan answers every sub-query — today's tokens, the prior-day
+    /// spillover, and the full heatmap range — regardless of the order they arrive in.
+    /// </summary>
+    public const int ScanWindowWeeks = 24;
+
     private static readonly object CacheLock = new();
-    private static DateOnly _cachedStart;
-    private static DateOnly _cachedEnd;
+    private static string? _cachedHome;
+    private static DateOnly _cachedScanStart;
+    private static DateOnly _cachedScanEnd;
     private static DateTimeOffset _cachedAtUtc;
     private static IReadOnlyDictionary<DateOnly, long> _cachedRange = new Dictionary<DateOnly, long>();
 
+    /// <summary>
+    /// Days before the requested start that must still be read: a session started the previous day can
+    /// continue into the first requested day, so the scan window always begins one day early.
+    /// </summary>
+    private const int ScanSpilloverDays = 1;
+
     public static long ReadTodayTokens(DateOnly today, string? codexHome = null)
-        => ReadDayTokens(today, codexHome);
+        => ReadRangeTokensCached(today, today, codexHome).GetValueOrDefault(today);
 
     /// <summary>Tokens observed on a single day, including events of a session started the previous day.</summary>
     public static long ReadDayTokens(DateOnly day, string? codexHome = null)
@@ -89,26 +104,54 @@ internal static class LocalCodexUsageScanner
         DateOnly end,
         string? codexHome = null)
     {
-        lock (CacheLock)
-        {
-            if (start == _cachedStart
-                && end == _cachedEnd
-                && DateTimeOffset.UtcNow - _cachedAtUtc <= CacheAge)
-            {
-                return _cachedRange;
-            }
-        }
+        string home = ResolveCodexHome(codexHome);
 
-        var fresh = ReadRangeTokens(start, end, codexHome);
+        // Serve any requested [start, end] from a single cached managed-full-window scan: historical
+        // days are immutable once they end and the current day is always the cache end, so a cached
+        // scan answers every sub-range — today's tokens (ReadTodayTokens), the prior-day spillover, and
+        // the whole heatmap window — no matter the order the callers ask for them.
+        if (TryGetCached(home, start, end) is { } hit)
+            return hit;
+
+        // Scan the canonical window in one pass so one I/O+parse run fills the whole cache: from
+        // (ScanWindowWeeks back) to end. A narrower sub-request widens to this canonical range so later
+        // sub-queries hit instead of re-reading; the request's own end is retained as the cache end when
+        // it reaches past today (defensive — every caller ends at today).
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var scanStart = MinDate(start.AddDays(-ScanSpilloverDays), today.AddDays(-ScanWindowWeeks * 7));
+        var scanEnd = MaxDate(end, today);
+        var fresh = ReadRangeTokens(scanStart, scanEnd, home);
         lock (CacheLock)
         {
-            _cachedStart = start;
-            _cachedEnd = end;
+            _cachedHome = home;
+            _cachedScanStart = scanStart;
+            _cachedScanEnd = scanEnd;
             _cachedAtUtc = DateTimeOffset.UtcNow;
             _cachedRange = fresh;
             return fresh;
         }
     }
+
+    private static IReadOnlyDictionary<DateOnly, long>? TryGetCached(string home, DateOnly requestedStart, DateOnly requestedEnd)
+    {
+        lock (CacheLock)
+        {
+            if (_cachedHome != home
+                || string.IsNullOrEmpty(_cachedHome)
+                || requestedStart < _cachedScanStart
+                || requestedEnd > _cachedScanEnd
+                || DateTimeOffset.UtcNow - _cachedAtUtc > CacheAge)
+            {
+                return null;
+            }
+
+            return _cachedRange;
+        }
+    }
+
+    private static DateOnly MinDate(DateOnly a, DateOnly b) => a < b ? a : b;
+
+    private static DateOnly MaxDate(DateOnly a, DateOnly b) => a > b ? a : b;
 
     private static long ReadFileTokens(string path, DateOnly targetDay)
     {

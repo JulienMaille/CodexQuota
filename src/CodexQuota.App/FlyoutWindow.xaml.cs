@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -313,7 +314,7 @@ namespace CodexQuota
             if (!_shown)
                 return;
 
-            DispatcherQueue.TryEnqueue(() => UsagePanel.SetProfile(profile));
+            ApplyProfileAfterPaint(profile);
         }
 
         private void OnPaceSettingsChanged() => RefreshPanelForAppearance();
@@ -372,11 +373,12 @@ namespace CodexQuota
             _shownAtUtc = DateTime.UtcNow;
             UsageCoordinator.Instance.NotifyFlyoutOpen();
 
-            // Hydrate the panel before moving it on-screen. SetResult and SetProfile build the meter
-            // rows and heatmap synchronously; showing the window first exposes the acrylic surface as
-            // a blank white slab for the duration of that work.
+            // Hydrate the meter rows synchronously (cheap) so the panel is never a blank slab; defer
+            // the profile heatmap — its local journal scan parses the whole session journal on a cold
+            // cache and can block for seconds — until after the window has painted so the flyout appears
+            // immediately even on the first open.
             UsagePanel.SetResult(UsageCoordinator.Instance.LastState);
-            UsagePanel.SetProfile(UsageCoordinator.Instance.LastProfile);
+            ApplyProfileAfterPaint(UsageCoordinator.Instance.LastProfile);
             UsagePanel.ApplyLogoBrush();
 
             var target = ApplyFlyoutBounds();
@@ -410,6 +412,32 @@ namespace CodexQuota
             {
                 _ = UsageCoordinator.Instance.FetchProfileAsync();
             }
+        }
+
+        /// <summary>
+        /// Renders a profile (and its local-journal merged heatmap) without blocking the flyout's first
+        /// paint. The journal scan is disk I/O and JSON parsing of the whole session log, so it runs on a
+        /// thread-pool worker; only the resulting XAML element construction is marshalled to the UI
+        /// thread, and only after the window's initial frame has been shown.
+        /// </summary>
+        private async void ApplyProfileAfterPaint(CodexProfileSnapshot? profile)
+        {
+            if (profile is null)
+                return;
+
+            // First paint wins: yield so the window (already shown) composites its content before the
+            // heatmap work — even the cheap path — has a chance to contend with it. The meters render
+            // synchronously in ShowAbove, so this only adds the lower-priority profile section.
+            await Task.Yield();
+
+            // The scan + merge is pure data work over the journal; do it off the UI thread so a cold
+            // cache cannot stall input or the entrance animation.
+            var rows = await Task.Run(() => CodexUsagePanel.BuildHeatmapRows(profile));
+
+            if (!_shown)
+                return;
+
+            DispatcherQueue.TryEnqueue(() => UsagePanel.RenderProfileRows(profile, rows));
         }
 
         // The flyout is a separate AppWindow, so XAML theme transitions cannot move the window itself.
