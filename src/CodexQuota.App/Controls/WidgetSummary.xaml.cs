@@ -388,11 +388,11 @@ namespace CodexQuota.Controls
                 rows.Add(new WidgetUsageRow(
                     "Resets",
                     0,
-                    resetCredits.AvailableCount.ToString("N0", CultureInfo.InvariantCulture),
+                    string.Empty,
                     CountdownFormat.Format(resetCredits.EarliestExpiresAt),
                     HasBar: false,
                     ResetAt: resetCredits.EarliestExpiresAt,
-                    SingleReset: resetCredits.AvailableCount == 1));
+                    LeadingCount: resetCredits.AvailableCount));
             }
             rows.AddRange(usage.ExtraRateWindows.Select(w => new WidgetUsageRow(
                 CompactLabel(w.Title),
@@ -521,7 +521,25 @@ namespace CodexQuota.Controls
             parts.Add(window.ShowCostValue ? "cost" : "percent");
         }
 
-        private static string BaseLabelText(WidgetUsageRow row) => AppStrings.LocalizeLabel(row.Label);
+        private static string BaseLabelText(WidgetUsageRow row)
+        {
+            string label = CountPrefix(row);
+            // The expiry countdown joins the label as one unit ("3 Resets 15d"): a separate
+            // reset column would pad to the group's widest label and leave a double-wide gap.
+            if (row.LeadingCount is not null && ResetDisplayText(row) is { Length: > 0 } reset)
+                label += $" {reset}";
+            return label;
+        }
+
+        private static string CountPrefix(WidgetUsageRow row)
+        {
+            string label = AppStrings.LocalizeLabel(row.Label);
+            // Resets row shows the count first ("3 Resets") so the trailing value column isn't
+            // mistaken for the count ("Resets 15d 3" reads backwards).
+            if (row.LeadingCount is { } count)
+                return $"{count.ToString("N0", CultureInfo.CurrentUICulture)} {label}";
+            return label;
+        }
 
         private static double MeasureTextWidth(string text, int fontSize = WidgetFontSize)
         {
@@ -535,6 +553,15 @@ namespace CodexQuota.Controls
             textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             return Math.Ceiling(textBlock.DesiredSize.Width);
         }
+
+        /// <summary>
+        /// Width of a single space: a lone " " TextBlock measures 0 (edge whitespace is
+        /// trimmed), so derive it from the difference between "0 0" and "00". Both inputs
+        /// are Ceiling()-ed, so the difference can quantize to 0 — clamp to at least 1px
+        /// or the count and countdown would join ("3 Resets15d").
+        /// </summary>
+        private static double MeasureSpaceWidth(int fontSize = WidgetFontSize)
+            => Math.Max(1, MeasureTextWidth("0 0", fontSize) - MeasureTextWidth("00", fontSize));
 
         private static Brush ResetBrush(string resetDescription)
         {
@@ -596,7 +623,7 @@ namespace CodexQuota.Controls
             bool HasBar = true,
             string? GlyphData = null,
             DateTimeOffset? ResetAt = null,
-            bool SingleReset = false);
+            int? LeadingCount = null);
 
         private sealed record RenderedRow(
             WidgetUsageRow Source,
@@ -739,9 +766,14 @@ namespace CodexQuota.Controls
                 var row = rows[start + i];
                 double iconWidth = row.GlyphData != null ? RowLabelGlyphReserve : 0;
                 widestLabel = Math.Max(widestLabel, MeasureTextWidth(BaseLabelText(row), labelFont) + iconWidth);
-                string resetDisplay = ResetDisplayText(row);
-                if (resetDisplay.Length > 0)
-                    widestReset = Math.Max(widestReset, MeasureTextWidth(resetDisplay, labelFont));
+                // The Resets row embeds its countdown in the label (single TextBlock), so its
+                // reset cell stays empty: skip it here or the group keeps a padded empty column.
+                if (row.LeadingCount is null)
+                {
+                    string resetDisplay = ResetDisplayText(row);
+                    if (resetDisplay.Length > 0)
+                        widestReset = Math.Max(widestReset, MeasureTextWidth(resetDisplay, labelFont));
+                }
             }
 
             double widestValue = 0;
@@ -931,13 +963,48 @@ namespace CodexQuota.Controls
 
         private static FrameworkElement CreateLabelText(WidgetUsageRow row, int fontSize = WidgetFontSize)
         {
-            var baseLabel = CreateText(BaseLabelText(row), 0.78, TextAlignment.Left, fontSize);
+            // The Resets row renders as a single line ("3 Resets 15d") instead of label + reset
+            // column: a separate column would pad to the group's widest label and leave a
+            // double-wide gap between the count and its countdown. Two TextBlocks in a tight
+            // StackPanel rather than Inlines/Run: Run inlines crash the native
+            // MeasureOverride in this unpackaged build. The gap is a measured single space:
+            // a trailing " " inside the first TextBlock gets trimmed by the text layout.
+            if (row.LeadingCount is not null && ResetDisplayText(row) is { Length: > 0 } reset)
+            {
+                var countPart = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
+                countPart.TextTrimming = TextTrimming.None;
+                var resetPart = CreateText(reset, 0.78, TextAlignment.Left, fontSize);
+                resetPart.TextTrimming = TextTrimming.None;
+                resetPart.Foreground = ResetBrushFor(row);
+                return new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = MeasureSpaceWidth(fontSize),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children = { countPart, resetPart },
+                };
+            }
+
+            if (row.LeadingCount is not null)
+            {
+                var countOnly = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
+                countOnly.TextTrimming = TextTrimming.None;
+                return countOnly;
+            }
+
+            var baseLabel = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
             baseLabel.TextTrimming = TextTrimming.None;
             return baseLabel;
         }
 
         private static TextBlock CreateResetText(WidgetUsageRow row, int fontSize = WidgetFontSize)
         {
+            // The Resets row embeds its countdown in the label (no separate reset column), so its
+            // cell stays empty; other rows render the countdown beside the label instead.
+            if (row.LeadingCount is not null)
+                return CreateText("", 0.9, TextAlignment.Left, fontSize);
+
             string display = ResetDisplayText(row);
             if (display.Length == 0)
                 return CreateText("", 0.9, TextAlignment.Left, fontSize);
@@ -945,12 +1012,20 @@ namespace CodexQuota.Controls
             var reset = CreateText(display, 0.9, TextAlignment.Left, fontSize);
             // A reset inside the imminent window shows its absolute date and gets the accent brush so
             // it stands out; countdowns keep the urgency-colored treatment.
-            reset.Foreground = ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow)
-                ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-                : ResetBrush(row.ResetDescription ?? string.Empty);
+            reset.Foreground = ResetBrushFor(row);
             reset.TextTrimming = TextTrimming.None;
             return reset;
         }
+
+        /// <summary>
+        /// Foreground for a row's reset countdown: the accent brush when the reset is imminent
+        /// (it shows the absolute local time), the urgency color otherwise. Shared by the plain
+        /// reset cell and the countdown Run embedded in the Resets label.
+        /// </summary>
+        private static Brush ResetBrushFor(WidgetUsageRow row)
+            => ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow)
+                ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+                : ResetBrush(row.ResetDescription ?? string.Empty);
 
         /// <summary>
         /// Reset text for the tile: the absolute local date when the reset is about to expire (within

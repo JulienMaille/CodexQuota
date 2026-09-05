@@ -15,7 +15,8 @@ namespace CodexQuota.Controls
     {
         /// <summary>
         /// Number of week columns rendered; buckets older than this window are dropped. Sized so the
-        /// grid fits the flyout's content width (~328px at 15px/column) without horizontal scrolling;
+        /// grid fits the flyout's content width (22 columns at 12px + 2px gaps = 306px, inside the
+        /// ~328px content width with room for scrollbar/DPI rounding) without horizontal scrolling;
         /// the profile endpoint itself typically returns ~8 weeks, so the chart's real depth past that
         /// comes from local session journals (gap days within this window are filled by
         /// <see cref="CodexUsagePanel"/>); the cap only truncates what neither source can supply.

@@ -105,14 +105,14 @@
                            TextTrimming="CharacterEllipsis"/>
             </StackPanel>
             <ScrollViewer HorizontalAlignment="Stretch"
-                          HorizontalScrollBarVisibility="Auto"
-                          HorizontalScrollMode="Auto"
-                          VerticalScrollBarVisibility="Disabled"
-                          VerticalScrollMode="Disabled"
-                          ZoomMode="Disabled">
+                           HorizontalScrollBarVisibility="Disabled"
+                           HorizontalScrollMode="Disabled"
+                           VerticalScrollBarVisibility="Disabled"
+                           VerticalScrollMode="Disabled"
+                           ZoomMode="Disabled">
                 <StackPanel x:Name="ActivityColumns"
-                            Orientation="Horizontal"
-                            Spacing="3"/>
+                             Orientation="Horizontal"
+                             Spacing="2"/>
             </ScrollViewer>
             <TextBlock x:Name="ActivityDetailText"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
