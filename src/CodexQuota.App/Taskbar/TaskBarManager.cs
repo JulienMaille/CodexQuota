@@ -21,6 +21,14 @@ namespace CodexQuota.Taskbar
         private static bool _initialized;
         private static bool _isReconcilingWidgets;
         private static ProviderId? _lastLoggedWidgetApplyProvider;
+        // Consecutive health ticks where a widget's taskbar handle was absent from the EnumWindows
+        // list. Explorer briefly hides its taskbar window from enumeration while busy (redraw,
+        // notification, fullscreen focus change); reacting on the first miss destroys and
+        // re-injects a healthy widget for a ~5s visible "restart". Only recreate after sustained
+        // absence — a genuinely gone taskbar (monitor unplug, Explorer restart with new handle)
+        // stays absent, while a transient miss recovers on the next tick.
+        private static readonly Dictionary<IntPtr, int> _missingHandleTicks = new();
+        private const int MissingHandleRecreateThreshold = 3;
 
         public static void Initialize(DispatcherQueue dispatcher)
         {
@@ -86,11 +94,33 @@ namespace CodexQuota.Taskbar
                         && pair.Value.IsDpiCurrent
                         && pair.Value.MatchesTarget(target))
                     {
+                        _missingHandleTicks.Remove(pair.Key);
                         continue;
                     }
 
+                    // The taskbar handle alone can vanish for a tick while Explorer is busy, then come
+                    // back on the next enumeration. Debounce that case: every other trigger (dead host,
+                    // DPI, target mismatch) recreates immediately, but a missing handle must persist
+                    // across ticks before the widget is torn down.
+                    if (!targetsByHandle.ContainsKey(pair.Key) && pair.Value.IsAlive)
+                    {
+                        int misses = _missingHandleTicks.TryGetValue(pair.Key, out int n) ? n + 1 : 1;
+                        _missingHandleTicks[pair.Key] = misses;
+                        if (misses < MissingHandleRecreateThreshold)
+                        {
+                            Log.Debug($"Taskbar handle absent ({misses}/{MissingHandleRecreateThreshold}); keeping widget taskbar=0x{pair.Key.ToInt64():X}");
+                            continue;
+                        }
+                    }
+                    _missingHandleTicks.Remove(pair.Key);
+
+                    // Name the exact trigger: the single "target taskbar, or DPI changed" line made
+                    // every 5s health-tick recreate look identical, hiding whether the taskbar handle,
+                    // its monitor key, the DPI, or a half-built host caused the visible "restart".
+                    string reason = DescribeRecreateReason(pair.Value,
+                        targetsByHandle.TryGetValue(pair.Key, out var current) ? current : null);
                     Widgets.Remove(pair.Key);
-                    Log.Warning($"Taskbar widget, target taskbar, or DPI changed; recreating taskbar=0x{pair.Key.ToInt64():X}");
+                    Log.Warning($"Taskbar widget recreating: {reason} taskbar=0x{pair.Key.ToInt64():X}");
                     try { pair.Value.Dispose(); }
                     catch (Exception ex) { Log.Warning(ex, "Failed to dispose missing taskbar widget"); }
                 }
@@ -100,11 +130,32 @@ namespace CodexQuota.Taskbar
                     if (!Widgets.ContainsKey(target.Handle))
                         CreateWidget(target);
                 }
+
+                // Drop miss counters for handles that no longer have a widget (disposed via the
+                // Destroying path), so a stale count can't fast-track a future recreate.
+                foreach (var handle in _missingHandleTicks.Keys.ToArray())
+                {
+                    if (!Widgets.ContainsKey(handle))
+                        _missingHandleTicks.Remove(handle);
+                }
             }
             finally
             {
                 _isReconcilingWidgets = false;
             }
+        }
+
+        private static string DescribeRecreateReason(TaskBarWidget widget, TaskbarWindowTarget? target)
+        {
+            if (!widget.IsAlive)
+                return "host window dead;";
+            if (!widget.IsHostContentReady)
+                return "host content never built;";
+            if (target is null)
+                return "taskbar handle gone;";
+            if (!widget.IsDpiCurrent)
+                return $"DPI changed (widget={widget.TaskbarDpi} current={TaskBarWidget.CurrentDpiFor(widget.TaskbarHandle)});";
+            return $"target mismatch (primary {widget.IsPrimaryTaskbar}->{target.Value.IsPrimary} display '{widget.DisplayKey}'->'{target.Value.DisplayKey}');";
         }
 
         private static void CreateWidget(TaskbarWindowTarget target)
@@ -293,6 +344,7 @@ namespace CodexQuota.Taskbar
             _widgetHealthTimer = null;
             try { _flyout?.Close(); } catch { }
             _flyout = null;
+            _missingHandleTicks.Clear();
             foreach (var widget in Widgets.Values.ToArray())
             {
                 try { widget.Dispose(); } catch { }

@@ -143,6 +143,16 @@ namespace CodexQuota.Taskbar
         }
         public IntPtr TaskbarHandle => hwndShell;
         public bool IsPrimaryTaskbar => isPrimaryTaskbar;
+        /// <summary>DPI captured at construction; surfaced for the manager's recreate-reason log.</summary>
+        public uint TaskbarDpi => taskbarDpi;
+        /// <summary>Monitor key captured at construction; surfaced for the manager's recreate-reason log.</summary>
+        public string DisplayKey => displayKey;
+        /// <summary>Live DPI of a taskbar window (0/unknown reads as 96); surfaced for the recreate log.</summary>
+        public static uint CurrentDpiFor(IntPtr taskbarHandle)
+        {
+            uint dpi = User32.GetDpiForWindow(taskbarHandle);
+            return dpi == 0 ? 96u : dpi;
+        }
         /// <summary>
         /// Supplies the best available snapshot for a provider when a slot is (re)assigned to it, so a
         /// re-ordered tile paints its new provider immediately instead of holding the previous one's rows
