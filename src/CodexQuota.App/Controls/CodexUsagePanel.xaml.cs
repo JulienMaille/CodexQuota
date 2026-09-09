@@ -48,8 +48,8 @@ namespace CodexQuota.Controls
             // enough — the panel can load (off-screen prewarm) before the window's theme is resolved, and
             // ActualTheme then reports Light even on a dark system, leaving a near-black glyph on the dark
             // acrylic. Re-apply when the theme resolves/changes, and again once the flyout is really shown.
-            Loaded += (_, _) => ApplyLogoBrush();
-            ActualThemeChanged += (_, _) => ApplyLogoBrush();
+            Loaded += (_, _) => { ApplyLogoBrush(); ApplyLinkBrush(); };
+            ActualThemeChanged += (_, _) => { ApplyLogoBrush(); ApplyLinkBrush(); };
         }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
@@ -681,6 +681,19 @@ namespace CodexQuota.Controls
 
             var brush = ActualTheme == ElementTheme.Dark ? LogoBrushDark : LogoBrushLight;
             ProviderGlyphRenderer.TryApply(LogoPath, ProviderId.Codex, brush, normalizeToViewport: false);
+            ApplyLinkBrush();
+        }
+
+        /// <summary>
+        /// Paints the "Token activity" hyperlink with the header text color. The brush is set here —
+        /// not via a ThemeResource in XAML — because Hyperlink/Run are TextElements: their
+        /// ThemeResource resolves once at load (the panel prewarms off-screen as Light) and never
+        /// re-evaluates, leaving black text on the dark acrylic. ActualTheme tracks the effective
+        /// theme, so this follows it exactly like the logo glyph above.
+        /// </summary>
+        private void ApplyLinkBrush()
+        {
+            TokenActivityLink.Foreground = ActualTheme == ElementTheme.Dark ? LogoBrushDark : LogoBrushLight;
         }
     }
 }

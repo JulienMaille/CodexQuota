@@ -99,8 +99,13 @@
                 <TextBlock x:Name="TokenActivityText"
                            Style="{StaticResource BodyTextBlockStyle}"
                            ToolTipService.ToolTip="https://chatgpt.com/codex/cloud/settings/analytics">
+                    <!-- No ThemeResource Foreground on the Hyperlink itself: Hyperlink/Run are
+                         TextElements, not FrameworkElements, so a ThemeResource there resolves once
+                         at load (the panel prewarms off-screen as Light) and never re-evaluates on
+                         theme change — it stays black on the dark acrylic. The brush is applied from
+                         code-behind (ApplyLinkBrush, via Loaded / ActualThemeChanged / ApplyLogoBrush)
+                         so it follows the effective theme like the logo glyph. -->
                     <Hyperlink x:Name="TokenActivityLink"
-                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                UnderlineStyle="None"
                                Click="TokenActivityLink_Click"><Run x:Name="TokenActivityRun"/></Hyperlink>
                 </TextBlock>
