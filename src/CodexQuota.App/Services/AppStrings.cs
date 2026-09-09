@@ -157,6 +157,10 @@ internal static partial class AppStrings
             ["AutoSend.StatusFailed"] = "Auto-send failed at {0}",
             ["AutoSend.StatusNoReset"] = "Auto-send stopped at {0}: reset was not observed",
             ["AutoSend.StatusArmRejected"] = "Auto-send could not arm: no session reset time is available yet",
+            ["AutoSend.Test"] = "Test",
+            ["AutoSend.Testing"] = "Testing…",
+            ["AutoSend.TestFound"] = "Send button found in '{0}'",
+            ["AutoSend.TestNotFound"] = "Send button not detected",
             ["Pace.ResetsBeforeCap"] = "Pace ~{0}% quota/day · resets before cap",
         };
 

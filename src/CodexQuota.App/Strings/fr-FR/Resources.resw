@@ -82,6 +82,10 @@
   <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Envoi auto échoué à {0}</value></data>
   <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Envoi auto arrêté à {0}: aucune réinitialisation observée</value></data>
   <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Impossible d’armer l’envoi auto : aucune heure de réinitialisation de session n’est encore disponible</value></data>
+  <data name="AutoSend.Test" xml:space="preserve"><value>Tester</value></data>
+  <data name="AutoSend.Testing" xml:space="preserve"><value>Test…</value></data>
+  <data name="AutoSend.TestFound" xml:space="preserve"><value>Bouton d’envoi trouvé dans '{0}'</value></data>
+  <data name="AutoSend.TestNotFound" xml:space="preserve"><value>Bouton d’envoi non détecté</value></data>
   <data name="Codex.NotRunning" xml:space="preserve"><value>Codex n’est pas en cours d’exécution</value></data>
   <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Ouvrez l’application Codex pour que l’envoi auto appuie sur Envoyer à la prochaine réinitialisation.</value></data>
 </root>

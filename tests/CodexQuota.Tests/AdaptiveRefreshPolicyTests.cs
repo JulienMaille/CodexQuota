@@ -13,7 +13,7 @@ public class AdaptiveRefreshPolicyTests
 
     [Fact]
     public void NeverOpenedAndIdleUsesLongIdleDelay()
-        => Assert.Equal(TimeSpan.FromMinutes(30), AdaptiveRefreshPolicy.NextDelay(false, null, Now, codexRunning: false));
+        => Assert.Equal(TimeSpan.FromMinutes(10), AdaptiveRefreshPolicy.NextDelay(false, null, Now, codexRunning: false));
 
     [Fact]
     public void OpenFlyoutStaysOnFastCadence()
@@ -36,21 +36,21 @@ public class AdaptiveRefreshPolicyTests
             AdaptiveRefreshPolicy.NextDelay(false, Now.AddMinutes(-30), Now, codexRunning: false));
 
     [Fact]
-    public void IdleWindowUsesFifteenMinutes()
+    public void IdleWindowUsesFiveMinutes()
         => Assert.Equal(
-            TimeSpan.FromMinutes(15),
+            TimeSpan.FromMinutes(5),
             AdaptiveRefreshPolicy.NextDelay(false, Now.AddHours(-2), Now, codexRunning: false));
 
     [Fact]
-    public void LongIdleUsesThirtyMinutes()
+    public void LongIdleUsesTenMinutes()
         => Assert.Equal(
-            TimeSpan.FromMinutes(30),
+            TimeSpan.FromMinutes(10),
             AdaptiveRefreshPolicy.NextDelay(false, Now.AddHours(-6), Now, codexRunning: false));
 
     [Fact]
     public void ClockSkewReadsAsRecentInteraction()
         // A future timestamp ages negative, which falls inside the 5-minute active window: the
-        // cadence stays fresh rather than backing off into a 30-minute hole.
+        // cadence stays fresh rather than backing off into a 10-minute hole.
         => Assert.Equal(
             TimeSpan.FromSeconds(60),
             AdaptiveRefreshPolicy.NextDelay(false, Now.AddMinutes(2), Now, codexRunning: false));

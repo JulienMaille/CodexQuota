@@ -22,11 +22,11 @@ public static class AdaptiveRefreshPolicy
     /// <summary>Warm: recent interaction aged out but within an hour.</summary>
     public static readonly TimeSpan WarmDelay = TimeSpan.FromMinutes(5);
 
-    /// <summary>Idle: no interaction for up to 4 hours.</summary>
-    public static readonly TimeSpan IdleDelay = TimeSpan.FromMinutes(15);
+    /// <summary>Idle: no interaction for up to 4 hours (5-minute cadence).</summary>
+    public static readonly TimeSpan IdleDelay = TimeSpan.FromMinutes(5);
 
-    /// <summary>Long idle (or never opened): slowest sustainable cadence.</summary>
-    public static readonly TimeSpan LongIdleDelay = TimeSpan.FromMinutes(30);
+    /// <summary>Long idle (or never opened): slowest sustainable cadence (10 minutes).</summary>
+    public static readonly TimeSpan LongIdleDelay = TimeSpan.FromMinutes(10);
 
     /// <summary>Minimum supported interval, used to clamp clock-skewed inputs.</summary>
     public static readonly TimeSpan MinimumDelay = TimeSpan.FromSeconds(30);

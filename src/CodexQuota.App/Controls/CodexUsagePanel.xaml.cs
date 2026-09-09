@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 using Windows.UI;
 using CodexQuota.Diagnostics;
 using CodexQuota.Helpers;
@@ -21,7 +24,7 @@ namespace CodexQuota.Controls
     /// </summary>
     public sealed partial class CodexUsagePanel : UserControl
     {
-        private static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(12);
 
         /// <summary>Raised when the header refresh button is clicked; the flyout owns the fetch.</summary>
         public event Action? RefreshRequested;
@@ -34,6 +37,8 @@ namespace CodexQuota.Controls
 
         private static readonly Brush LogoBrushDark = new SolidColorBrush(Colors.White);
         private static readonly Brush LogoBrushLight = new SolidColorBrush(Color.FromArgb(255, 28, 28, 28));
+
+        private static readonly Uri TokenAnalyticsUri = new("https://chatgpt.com/codex/cloud/settings/analytics");
 
         public CodexUsagePanel()
         {
@@ -632,7 +637,10 @@ namespace CodexQuota.Controls
 
         private void ApplyLocalizedStrings()
         {
-            TokenActivityText.Text = AppStrings.Get("Ui.TokenActivity");
+            TokenActivityRun.Text = AppStrings.Get("Ui.TokenActivity");
+
+            AutomationProperties.SetName(TokenActivityText, AppStrings.Get("Ui.TokenActivity"));
+            AutomationProperties.SetName(TokenActivityLink, AppStrings.Get("Ui.TokenActivity"));
 
             AutomationProperties.SetName(SettingsButton, AppStrings.Get("Ui.Settings"));
             ToolTipService.SetToolTip(SettingsButton, AppStrings.Get("Ui.ShowHideAppearanceOptions"));
@@ -642,6 +650,26 @@ namespace CodexQuota.Controls
 
             AutomationProperties.SetName(CloseButton, AppStrings.Get("Ui.Close"));
             ToolTipService.SetToolTip(CloseButton, AppStrings.Get("Ui.Close"));
+        }
+
+        /// <summary>
+        /// The header keeps its body-text look at all times (no underline toggle): the hand
+        /// cursor + tooltip carry the link affordance, so hover never re-renders the text and
+        /// cannot flicker when the pointer crosses Run/Hyperlink boundaries.
+        /// </summary>
+        private void TokenActivityLink_Click(Hyperlink sender, HyperlinkClickEventArgs args)
+            => _ = OpenTokenAnalyticsAsync();
+
+        private static async Task OpenTokenAnalyticsAsync()
+        {
+            try
+            {
+                await Launcher.LaunchUriAsync(TokenAnalyticsUri);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Warning(ex, "Token activity link failed to open");
+            }
         }
 
         private static string MeterLabel(string title) => title.Trim();

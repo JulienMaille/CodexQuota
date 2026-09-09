@@ -5,14 +5,29 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <StackPanel Spacing="4">
-        <CheckBox x:Name="ArmCheck"
-                  FontSize="12"
-                  MinHeight="20"
-                  MinWidth="0"
-                  Padding="6,0,0,0"
-                  VerticalContentAlignment="Center"
-                  Checked="ArmCheck_Checked"
-                  Unchecked="ArmCheck_Unchecked"/>
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <CheckBox x:Name="ArmCheck"
+                      Grid.Column="0"
+                      FontSize="12"
+                      MinHeight="20"
+                      MinWidth="0"
+                      Padding="6,0,0,0"
+                      VerticalContentAlignment="Center"
+                      Checked="ArmCheck_Checked"
+                      Unchecked="ArmCheck_Unchecked"/>
+            <Button x:Name="TestButton"
+                    Grid.Column="1"
+                    MinWidth="0"
+                    MinHeight="20"
+                    Padding="8,1,8,3"
+                    FontSize="12"
+                    VerticalAlignment="Center"
+                    Click="TestButton_Click"/>
+        </Grid>
         <CheckBox x:Name="SkipWeeklyCheck"
                   Margin="20,0,0,0"
                   FontSize="12"

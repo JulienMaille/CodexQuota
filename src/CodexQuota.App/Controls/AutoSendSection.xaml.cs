@@ -1,8 +1,11 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
+using CodexQuota.Diagnostics;
 using CodexQuota.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace CodexQuota.Controls;
 
@@ -15,6 +18,9 @@ public sealed partial class AutoSendSection : UserControl
 {
     // Checked/Unchecked handlers fire during seeding; the guard keeps that from arming/disarming.
     private bool _initializing;
+
+    // Dry-run probe state: only drives the status line, never the arm/disarm machine.
+    private bool _testing;
 
     public AutoSendSection()
     {
@@ -33,6 +39,7 @@ public sealed partial class AutoSendSection : UserControl
         ToolTipService.SetToolTip(ArmCheck, AppStrings.Get("AutoSend.ArmTooltip"));
         SkipWeeklyCheck.Content = AppStrings.Get("AutoSend.SkipWeekly");
         ToolTipService.SetToolTip(SkipWeeklyCheck, AppStrings.Get("AutoSend.SkipWeeklyTooltip"));
+        TestButton.Content = AppStrings.Get("AutoSend.Test");
     }
 
     private void OnStatusChanged(AutoSendStatus status)
@@ -56,6 +63,11 @@ public sealed partial class AutoSendSection : UserControl
                 AutoSendState.Confirming => AppStrings.Format("AutoSend.StatusConfirming", FormatInstant(status.TargetResetAt)),
                 _ => FormatOutcome(status),
             };
+
+            // The probe temporarily recolors the status line; the state machine always owns the
+            // secondary style so a stale probe color never leaks into armed/sent outcomes.
+            StatusText.Foreground = LookupBrush("TextFillColorSecondaryBrush") ?? StatusText.Foreground;
+            ToolTipService.SetToolTip(StatusText, null);
         }
         finally
         {
@@ -116,4 +128,78 @@ public sealed partial class AutoSendSection : UserControl
 
     private AutoSendMode CurrentMode()
         => SkipWeeklyCheck.IsChecked == true ? AutoSendMode.SkipIfWeeklyReset : AutoSendMode.Always;
+
+    /// <summary>
+    /// Dry-run check that Send-button detection works, without sending anything: probes the Codex
+    /// UI tree on a background thread (UIA can block), then reports into the status line. Never
+    /// arms/disarms auto-send and never touches the status state machine.
+    /// </summary>
+    private async void TestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_testing)
+            return;
+
+        _testing = true;
+        TestButton.IsEnabled = false;
+        TestButton.Content = AppStrings.Get("AutoSend.Testing");
+        StatusText.Text = AppStrings.Get("AutoSend.Testing");
+        try
+        {
+            var (result, detail, foundTitle) = await Task.Run(() =>
+            {
+                ICodexAppSender sender = new CodexAppSender();
+                var probe = sender.TryDetect(out string probeDetail, out string probeTitle);
+                return (probe, probeDetail, probeTitle);
+            });
+
+            ShowProbeResult(result, detail, foundTitle);
+        }
+        catch (Exception ex)
+        {
+            ShowProbeResult(SendButtonProbeResult.Failed, ex.Message, string.Empty);
+        }
+        finally
+        {
+            _testing = false;
+            TestButton.Content = AppStrings.Get("AutoSend.Test");
+            TestButton.IsEnabled = true;
+        }
+    }
+
+    private void ShowProbeResult(SendButtonProbeResult result, string detail, string foundTitle)
+    {
+        if (result == SendButtonProbeResult.Found)
+        {
+            StatusText.Text = AppStrings.Format("AutoSend.TestFound", string.IsNullOrEmpty(foundTitle) ? "?" : foundTitle);
+            StatusText.Foreground = LookupBrush("SystemFillColorSuccessBrush")
+                ?? LookupBrush("AccentTextFillColorPrimaryBrush")
+                ?? StatusText.Foreground;
+        }
+        else
+        {
+            string now = DateTimeOffset.Now.ToLocalTime().ToString("t", CultureInfo.CurrentUICulture);
+            StatusText.Text = result switch
+            {
+                SendButtonProbeResult.NoWindow => AppStrings.Format("AutoSend.StatusNoWindow", now),
+                SendButtonProbeResult.EmptyPrompt => AppStrings.Format("AutoSend.StatusEmptyPrompt", now),
+                SendButtonProbeResult.Failed => AppStrings.Format("AutoSend.StatusFailed", now),
+                _ => AppStrings.Get("AutoSend.TestNotFound"),
+            };
+            StatusText.Foreground = LookupBrush("TextFillColorSecondaryBrush") ?? StatusText.Foreground;
+        }
+
+        ToolTipService.SetToolTip(StatusText, string.IsNullOrEmpty(detail) ? null : detail);
+        Log.Information($"Codex send-button probe: {result} ({detail})");
+    }
+
+    private static Brush? LookupBrush(string key)
+    {
+        try
+        {
+            if (Application.Current?.Resources.TryGetValue(key, out object? value) == true && value is Brush brush)
+                return brush;
+        }
+        catch { /* theme lookup is best effort */ }
+        return null;
+    }
 }

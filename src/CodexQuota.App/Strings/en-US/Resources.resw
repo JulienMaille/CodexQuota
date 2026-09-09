@@ -82,6 +82,10 @@
   <data name="AutoSend.StatusFailed" xml:space="preserve"><value>Auto-send failed at {0}</value></data>
   <data name="AutoSend.StatusNoReset" xml:space="preserve"><value>Auto-send stopped at {0}: reset was not observed</value></data>
   <data name="AutoSend.StatusArmRejected" xml:space="preserve"><value>Auto-send could not arm: no session reset time is available yet</value></data>
+  <data name="AutoSend.Test" xml:space="preserve"><value>Test</value></data>
+  <data name="AutoSend.Testing" xml:space="preserve"><value>Testing…</value></data>
+  <data name="AutoSend.TestFound" xml:space="preserve"><value>Send button found in '{0}'</value></data>
+  <data name="AutoSend.TestNotFound" xml:space="preserve"><value>Send button not detected</value></data>
   <data name="Codex.NotRunning" xml:space="preserve"><value>Codex isn't running</value></data>
   <data name="Codex.NotRunningDetail" xml:space="preserve"><value>Open the Codex app for auto-send to press Send at the next reset.</value></data>
 </root>

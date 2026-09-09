@@ -127,6 +127,19 @@ namespace CodexQuota.Interop
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetFocus([In] IntPtr hWnd);
 
+        public const int SW_MINIMIZE = 6;
+        public const int SW_RESTORE = 9;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ShowWindow([In] IntPtr hWnd, int nCmdShow);
+
+        public static bool ShowWindowMinimized(IntPtr hWnd) => ShowWindow(hWnd, SW_MINIMIZE);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsIconic([In] IntPtr hWnd);
+
         [DllImport("kernel32.dll")]
         public static extern uint GetCurrentThreadId();
 
