@@ -45,7 +45,8 @@ public interface ICodexAppSender
     /// </summary>
     SendButtonProbeResult TryDetect(out string detail, out string foundTitle)
     {
-        detail = string.Empty;
+        // P2: distinctive default so an un-overridden fake is distinguishable from a real failure.
+        detail = "TryDetect not implemented by this sender";
         foundTitle = string.Empty;
         return SendButtonProbeResult.Failed;
     }

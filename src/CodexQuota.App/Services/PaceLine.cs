@@ -55,27 +55,50 @@ public static class PaceLine
         DateTimeOffset now,
         int workdayHours = PaceSettings.DefaultWorkdayHours)
     {
+        // P2: NaN/Infinity inputs must hide, not render "Pace ~NaN%". Guard at the top and clamp.
+        if (!double.IsFinite(weeklyUsedPercent) || !double.IsFinite(now.UtcTicks))
+            return null;
         if (weeklyResetAt is not { } resetAt || resetAt <= now)
             return null;
         if (weeklyUsedPercent <= 0)
             return null;
+        // P2: a missing window is hidden per the hide-contract — never fabricate a 7-day fallback.
+        if (weeklyWindowMinutes <= 0)
+            return null;
 
         workdayHours = Math.Clamp(workdayHours, 1, 24);
-        double spanDays = weeklyWindowMinutes > 0 ? weeklyWindowMinutes / 1440.0 : 7.0;
-        var windowStart = resetAt.AddDays(-spanDays);
+        // P2: int.MaxValue minutes would overflow AddDays; clamp the span to a sane range.
+        double spanDays = Math.Min(weeklyWindowMinutes / 1440.0, 366.0);
+        if (!double.IsFinite(spanDays) || spanDays <= 0)
+            return null;
+        DateTimeOffset windowStart;
+        try
+        {
+            windowStart = resetAt.AddDays(-spanDays);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+
         double elapsedDays = (now - windowStart).TotalDays;
-        if (elapsedDays <= 1e-9)
+        if (!double.IsFinite(elapsedDays) || elapsedDays <= 1e-9)
             return null;
 
         double elapsedWorkdays = WorkdaysElapsed(elapsedDays, workdayHours);
-        if (elapsedWorkdays <= 1e-9)
+        if (!double.IsFinite(elapsedWorkdays) || elapsedWorkdays <= 1e-9)
             return null;
 
         double used = Math.Clamp(weeklyUsedPercent, 0, 100);
         double expectedUsed = Math.Clamp(elapsedWorkdays / spanDays * 100, 0, 100);
         bool materiallyAhead = used - expectedUsed > OnTrackDeltaPercent;
         double burnPerDay = used / elapsedWorkdays;
+        // P2: a non-finite burn (elapsed ~0 slipped through) must hide, not AddDays(NaN/Inf).
+        if (!double.IsFinite(burnPerDay) || burnPerDay <= 0)
+            return null;
         double daysToCap = (100 - used) / burnPerDay;
+        if (!double.IsFinite(daysToCap))
+            return null;
 
         bool burned = used >= 100 || daysToCap <= 0;
         double daysToReset = (resetAt - now).TotalDays;

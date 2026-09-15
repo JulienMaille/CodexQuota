@@ -49,7 +49,12 @@ internal static partial class AppStrings
     }
 
     private static string ResourceLanguageFor(CultureInfo culture)
-        => culture.TwoLetterISOLanguageName.ToLowerInvariant() switch
+    {
+        // Preserve region: full-tag match first (zh-TW stays zh-TW when shipped,
+        // pt-PT stays pt-PT), then fall back to the language's default region.
+        if (Localized.ContainsKey(culture.Name))
+            return culture.Name;
+        return culture.TwoLetterISOLanguageName.ToLowerInvariant() switch
         {
             "de" => "de-DE",
             "en" => "en-US",
@@ -63,6 +68,7 @@ internal static partial class AppStrings
             "zh" => "zh-CN",
             _ => culture.Name,
         };
+    }
 
     private static readonly Lazy<AppResourceAccess?> Resources = new(() =>
     {

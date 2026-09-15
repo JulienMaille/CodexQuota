@@ -11,7 +11,10 @@ namespace CodexQuota.Usage
     /// <summary>A single rate-limit window (for example session or weekly), expressed as percent used.</summary>
     public sealed class RateWindow
     {
-        public double UsedPercent { get; init; }
+        private double _usedPercent;
+        /// <summary>Percent used, always normalized to 0..100 on read so init-bypassed values
+        /// can never drive <see cref="RemainingPercent"/> negative.</summary>
+        public double UsedPercent { get => Math.Clamp(_usedPercent, 0, 100); init => _usedPercent = value; }
         public int? WindowMinutes { get; init; }
         public DateTimeOffset? ResetAt { get; init; }
         public string? ResetDescription { get; init; }
@@ -66,8 +69,10 @@ namespace CodexQuota.Usage
             Label = label;
         }
 
-        public CostSnapshot WithLimit(double limit) { Limit = limit; return this; }
-        public CostSnapshot WithResetsAt(DateTimeOffset at) { ResetsAt = at; return this; }
+        /// <summary>Copy-on-write: returns a new instance so shared snapshots are never mutated.</summary>
+        public CostSnapshot WithLimit(double limit) => new(Amount, Currency, Label) { Limit = limit, ResetsAt = ResetsAt };
+        /// <summary>Copy-on-write: returns a new instance so shared snapshots are never mutated.</summary>
+        public CostSnapshot WithResetsAt(DateTimeOffset at) => new(Amount, Currency, Label) { Limit = Limit, ResetsAt = at };
 
         private string Money(double v) =>
             string.Equals(Currency, "USD", StringComparison.OrdinalIgnoreCase) ? $"${v:0.00}" : $"{v:0.00} {Currency}";
@@ -124,9 +129,11 @@ namespace CodexQuota.Usage
             get
             {
                 DateTimeOffset? earliest = null;
+                if (Credits is null)
+                    return null;
                 foreach (var credit in Credits)
                 {
-                    if (credit.ExpiresAt is not { } expiresAt)
+                    if (credit?.ExpiresAt is not { } expiresAt)
                         continue;
 
                     if (earliest is null || expiresAt < earliest)
@@ -264,6 +271,8 @@ namespace CodexQuota.Usage
             var merged = new List<ProfileUsageBucket>(DailyUsageBuckets.Count + 1);
             bool foundToday = false;
             bool localWon = false;
+            long serverTodayTokens = 0;
+            long mergedTodayTokens = liveTokens;
 
             foreach (var bucket in DailyUsageBuckets)
             {
@@ -274,7 +283,9 @@ namespace CodexQuota.Usage
                 }
 
                 foundToday = true;
+                serverTodayTokens = bucket.Tokens;
                 long tokens = Math.Max(bucket.Tokens, liveTokens);
+                mergedTodayTokens = tokens;
                 localWon |= liveTokens > bucket.Tokens;
                 merged.Add(new ProfileUsageBucket(todayKey, tokens));
             }
@@ -288,12 +299,16 @@ namespace CodexQuota.Usage
             if (!localWon)
                 return this;
 
+            // The appended today bucket feeds the derived totals: fold only the local delta
+            // (today merged minus what the server already counted) into LifetimeTokens, and
+            // keep PeakDailyTokens at least as large as the merged today value.
+            long localDelta = Math.Max(0, mergedTodayTokens - serverTodayTokens);
             return new CodexProfileSnapshot
             {
                 Username = Username,
                 DisplayName = DisplayName,
-                LifetimeTokens = LifetimeTokens,
-                PeakDailyTokens = PeakDailyTokens,
+                LifetimeTokens = LifetimeTokens + localDelta,
+                PeakDailyTokens = Math.Max(PeakDailyTokens, mergedTodayTokens),
                 LongestRunningTurnSec = LongestRunningTurnSec,
                 CurrentStreakDays = CurrentStreakDays,
                 LongestStreakDays = LongestStreakDays,

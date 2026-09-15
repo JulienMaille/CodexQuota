@@ -80,13 +80,24 @@ namespace CodexQuota.Usage
                 var savedAt = DateTimeOffset.Now;
                 var entries = results
                     .Where(kv => kv.Value.Fetch is not null)
-                    .Select(kv => new StoredEntry
+                    .Select(kv =>
                     {
-                        Provider = kv.Key.ToString(),
-                        FetchedAt = kv.Value.Fetch!.FetchedAt,
-                        SavedAt = savedAt,
-                        SourceLabel = kv.Value.Fetch!.SourceLabel,
-                        Usage = FromSnapshot(kv.Value.Fetch!.Usage),
+                        // Never re-stamp a stale entry's SavedAt: it was restored, not re-confirmed live.
+                        // Stamping "now" would silently extend its restore life past MaxRestoreAge.
+                        // (Usual caller already skips re-saving unchanged live values; this covers the
+                        // paths that hand an IsStale fallback snapshot back to persistence.)
+                        var previouslySavedAt = LoadSavedAt(directory, kv.Key);
+                        var savedAt = kv.Value.IsStale && previouslySavedAt is { } preserved
+                            ? preserved
+                            : DateTimeOffset.Now;
+                        return new StoredEntry
+                        {
+                            Provider = kv.Key.ToString(),
+                            FetchedAt = kv.Value.Fetch!.FetchedAt,
+                            SavedAt = savedAt,
+                            SourceLabel = kv.Value.Fetch!.SourceLabel,
+                            Usage = FromSnapshot(kv.Value.Fetch!.Usage),
+                        };
                     })
                     .ToList();
 
@@ -102,6 +113,23 @@ namespace CodexQuota.Usage
             catch (Exception ex)
             {
                 Diagnostics.Log.Warning(ex, "Failed to persist usage snapshots");
+            }
+        }
+
+        private static DateTimeOffset? LoadSavedAt(string directory, ProviderId id)
+        {
+            try
+            {
+                var path = FilePathIn(directory);
+                if (!File.Exists(path))
+                    return null;
+
+                var file = JsonSerializer.Deserialize(File.ReadAllText(path), UsageSnapshotsJsonContext.Default.StoredFile);
+                return file?.Entries?.FirstOrDefault(e => string.Equals(e.Provider, id.ToString(), StringComparison.Ordinal))?.SavedAt;
+            }
+            catch
+            {
+                return null;
             }
         }
 

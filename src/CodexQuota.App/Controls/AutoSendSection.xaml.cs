@@ -29,6 +29,12 @@ public sealed partial class AutoSendSection : UserControl
 
         AutoSendService.Instance.StatusChanged += OnStatusChanged;
         Unloaded += (_, _) => AutoSendService.Instance.StatusChanged -= OnStatusChanged;
+        Loaded += (_, _) =>
+        {
+            AutoSendService.Instance.StatusChanged -= OnStatusChanged;
+            AutoSendService.Instance.StatusChanged += OnStatusChanged;
+            ApplyStatus(AutoSendService.Instance.Status);
+        };
 
         ApplyStatus(AutoSendService.Instance.Status);
     }
@@ -121,10 +127,12 @@ public sealed partial class AutoSendSection : UserControl
 
     private void SkipWeeklyCheck_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_initializing || AutoSendService.Instance.Status.State == AutoSendState.Idle)
+        var state = AutoSendService.Instance.Status.State;
+        if (_initializing || state != AutoSendState.Armed)
             return;
 
         // Re-arm with the new mode; the existing target is kept (Arm re-reads it from the snapshot).
+        // Armed only: re-arming mid-confirm would reset confirm attempts/target via Arm().
         AutoSendService.Instance.Arm(CurrentMode());
     }
 

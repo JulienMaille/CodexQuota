@@ -95,7 +95,7 @@ namespace CodexQuota.Taskbar
         private Microsoft.UI.Xaml.Media.Brush? separatorBrush;
         private bool? separatorBrushIsLight;
         private Microsoft.UI.Xaml.Controls.StackPanel? summaryPanel;
-        private int availableLogicalWidth = DefaultAvailableLogicalWidth;
+        private volatile int availableLogicalWidth = DefaultAvailableLogicalWidth;
         // Display set handed over before Initialize() built the panel, replayed once it has.
         private IReadOnlyList<ProviderId>? pendingProviders;
         private ProviderId? pendingActiveProvider;
@@ -116,6 +116,8 @@ namespace CodexQuota.Taskbar
         // the app icons are XAML, not classic child windows, so they only come from a UIA scan; cached here
         // so later positioning passes can reuse them without an async read (issue #17).
         private List<RECT> lastTaskButtonClientRects = new();
+        private DateTime lastTaskButtonClientRectsAt = DateTime.MinValue;
+        private static readonly TimeSpan TaskButtonClientRectsMaxAge = TimeSpan.FromSeconds(30);
         private bool initialized;
         private bool destroyed;
         private bool isVisible;
@@ -413,7 +415,14 @@ namespace CodexQuota.Taskbar
         {
             if (disposedValue)
                 return;
-            positionUpdateCancellation.Token.ThrowIfCancellationRequested();
+            CancellationToken token;
+            lock (positionRequestLock)
+            {
+                if (disposedValue)
+                    return;
+                token = positionUpdateCancellation.Token;
+            }
+            token.ThrowIfCancellationRequested();
             for (int i = 0; i < tiles.Length; i++)
             {
                 if (tileProviders[i] != result.Id)
@@ -682,7 +691,11 @@ namespace CodexQuota.Taskbar
             if (widest <= 0)
                 return;
 
-            availableLogicalWidth = (int)Math.Floor(widest / dpiScale);
+            int logical = (int)Math.Floor(widest / dpiScale);
+            lock (positionRequestLock)
+            {
+                availableLogicalWidth = logical;
+            }
         }
 
         private bool ResizeWidgetHost(int logicalWidth)
@@ -749,7 +762,13 @@ namespace CodexQuota.Taskbar
         private async Task UpdatePositionImpl(bool isCentered, bool isWidgetsEnabled)
         {
             bool gateAcquired = false;
-            var cancellationToken = positionUpdateCancellation.Token;
+            CancellationToken cancellationToken;
+            lock (positionRequestLock)
+            {
+                if (disposedValue)
+                    return;
+                cancellationToken = positionUpdateCancellation.Token;
+            }
             try
             {
                 await positionUpdateGate.WaitAsync(cancellationToken);
@@ -782,12 +801,24 @@ namespace CodexQuota.Taskbar
                 // client rects so later positioning passes can reuse them without an async read.
                 var taskButtonRects = await taskbarWatcher.GetTaskbarButtonRectsAsync();
                 cancellationToken.ThrowIfCancellationRequested();
+                List<RECT> effectiveTaskButtonRects;
                 if (taskButtonRects is not null)
                 {
                     var converted = new List<RECT>(taskButtonRects.Count);
                     foreach (var r in taskButtonRects)
                         converted.Add(ToTaskbarClientRect(r, taskbarScreenRect));
                     lastTaskButtonClientRects = converted;
+                    lastTaskButtonClientRectsAt = DateTime.UtcNow;
+                    effectiveTaskButtonRects = converted;
+                }
+                else if (DateTime.UtcNow - lastTaskButtonClientRectsAt < TaskButtonClientRectsMaxAge)
+                {
+                    effectiveTaskButtonRects = lastTaskButtonClientRects;
+                }
+                else
+                {
+                    // Stale snapshot expired: don't treat long-dead icons as permanent obstacles.
+                    effectiveTaskButtonRects = new List<RECT>();
                 }
 
                 var (leftBound, rightBound) = ComputeUsableHorizontalBounds(
@@ -809,10 +840,10 @@ namespace CodexQuota.Taskbar
 
                 // Every taskbar button (app icons + system buttons) is an obstacle, so the widget can never rest
                 // on top of the app cluster (issue #17).
-                var obstacles = CollectObstacleClientRects(taskbarScreenRect, wbClient, lastTaskButtonClientRects);
+                var obstacles = CollectObstacleClientRects(taskbarScreenRect, wbClient, effectiveTaskButtonRects);
 
                 // Only ever rest inside a gap that FULLY fits the widget; if none does, don't move it into an
-                // overlap — keep the last valid spot (issue #17). First run with no fit hugs the tray.
+                // overlap — keep the last valid spot (issue #17). First run with no fit defers placement.
                 var gaps = ComputeFreeGaps(leftBound, rightBound, obstacles);
                 // The widget is not one of its own obstacles, so the gap it sits in measures the full space
                 // it may occupy. That is the budget the tile-fit math trims against.
@@ -822,9 +853,14 @@ namespace CodexQuota.Taskbar
                 int offsetX;
                 if (placed is not { } fitX)
                 {
+                    Log.Debug($"[widget] no fitting gap (need {WidgetHostWidth}px); deferring placement");
                     if (currentOffsetX != int.MinValue)
                         return;
-                    offsetX = Math.Clamp(preferredX, leftBound, Math.Max(leftBound, rightBound - WidgetHostWidth));
+                    // First placement with no fit: hide until a gap opens rather than clamping
+                    // into an undersized gap and overlapping shell buttons.
+                    try { appWindow?.Hide(); } catch { }
+                    isVisible = false;
+                    return;
                 }
                 else
                 {
@@ -924,8 +960,13 @@ namespace CodexQuota.Taskbar
             }
             catch (Exception ex) { Log.Warning(ex, "overlap scan failed"); }
 
+            int beforeFilters = result.Count;
             result = FilterOffBandRects(result, taskbarScreenRect.bottom - taskbarScreenRect.top);
-            return FilterContainerRects(result, taskbarScreenRect.right - taskbarScreenRect.left);
+            result = FilterContainerRects(result, taskbarScreenRect.right - taskbarScreenRect.left);
+            int dropped = beforeFilters - result.Count;
+            if (dropped > 0)
+                Log.Debug($"[widget] dropped {dropped} off-band/container obstacle(s); kept {result.Count}");
+            return result;
         }
 
         /// <summary>

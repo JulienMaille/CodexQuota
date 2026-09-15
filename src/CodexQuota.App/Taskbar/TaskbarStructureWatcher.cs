@@ -28,6 +28,8 @@ namespace CodexQuota.Taskbar
         private List<RECT>? _lastTaskButtonRects;
         private DateTime _lastTaskButtonRectsAt = DateTime.MinValue;
         private static readonly TimeSpan TaskButtonRectsMaxAge = TimeSpan.FromSeconds(30);
+        private RECT _lastTaskbarRect;
+        private bool _hasLastTaskbarRect;
 
         private bool widgetsButtonEnabled;
         private bool taskbarCentered;
@@ -43,6 +45,11 @@ namespace CodexQuota.Taskbar
             widgetsButtonEnabled = SystemInfos.IsTaskBarWidgetsEnabled();
             taskbarCentered = SystemInfos.IsTaskBarCentered();
             taskbarHidden = IsTaskbarHidden();
+            if (User32.GetWindowRect(hwndTaskbar, out var initialRect))
+            {
+                _lastTaskbarRect = initialRect;
+                _hasLastTaskbarRect = true;
+            }
 
             _timer = new Timer(_ => Poll(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
         }
@@ -56,6 +63,7 @@ namespace CodexQuota.Taskbar
                 bool isWidgets = SystemInfos.IsTaskBarWidgetsEnabled();
                 bool isCentered = SystemInfos.IsTaskBarCentered();
                 bool isHidden = IsTaskbarHidden();
+                bool taskbarRectChanged = HasTaskbarRectChanged();
 
                 TaskbarChangedEventArgs? args = null;
                 lock (_sync)
@@ -66,6 +74,7 @@ namespace CodexQuota.Taskbar
                     if (isWidgets != widgetsButtonEnabled) { reason = TaskbarChangeReason.WidgetsButton; widgetsButtonEnabled = isWidgets; }
                     else if (isCentered != taskbarCentered) { reason = TaskbarChangeReason.Alignment; taskbarCentered = isCentered; }
                     else if (isHidden != taskbarHidden) { reason = TaskbarChangeReason.Visibility; taskbarHidden = isHidden; }
+                    else if (taskbarRectChanged) { reason = TaskbarChangeReason.Other; }
                     else
                     {
                         return;
@@ -233,9 +242,16 @@ namespace CodexQuota.Taskbar
                         }
                     }
 
-                    _lastTaskButtonRects = rects;
-                    _lastTaskButtonRectsAt = DateTime.UtcNow;
-                    return rects;
+                    if (rects.Count > 0)
+                    {
+                        _lastTaskButtonRects = rects;
+                        _lastTaskButtonRectsAt = DateTime.UtcNow;
+                        return new List<RECT>(rects);
+                    }
+
+                    // Don't cache an empty tree: a transient empty scan (shell rebuilding)
+                    // must not poison the cache for 30s.
+                    return CachedTaskButtonRectsLocked() ?? new List<RECT>(rects);
                 }
                 catch (Exception ex)
                 {
@@ -274,18 +290,44 @@ namespace CodexQuota.Taskbar
         }
 
         private List<RECT>? CachedTaskButtonRectsLocked()
-            => _lastTaskButtonRects is { } rects && DateTime.UtcNow - _lastTaskButtonRectsAt < TaskButtonRectsMaxAge
-                ? rects
-                : null;
+        {
+            if (_lastTaskButtonRects is { } rects && DateTime.UtcNow - _lastTaskButtonRectsAt < TaskButtonRectsMaxAge)
+                return new List<RECT>(rects);
+            return null;
+        }
+
+        private bool HasTaskbarRectChanged()
+        {
+            if (!User32.GetWindowRect(hwndTaskbar, out var current))
+                return false;
+            if (!_hasLastTaskbarRect)
+            {
+                _lastTaskbarRect = current;
+                _hasLastTaskbarRect = true;
+                return true;
+            }
+            if (current.left == _lastTaskbarRect.left && current.top == _lastTaskbarRect.top
+                && current.right == _lastTaskbarRect.right && current.bottom == _lastTaskbarRect.bottom)
+                return false;
+            _lastTaskbarRect = current;
+            return true;
+        }
 
         private bool IsTaskbarHidden()
         {
             IntPtr p = User32.GetProp(hwndTaskbar, "IsAutoHideEnabled");
             if (p != (IntPtr)1) return false;
-            WindowId id = Win32Interop.GetWindowIdFromWindow(hwndTaskbar);
-            var area = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary);
-            User32.GetWindowRect(hwndTaskbar, out var rect);
-            return rect.bottom > area.OuterBounds.Height;
+            if (!User32.GetWindowRect(hwndTaskbar, out var rect))
+                return false;
+            IntPtr monitor = User32.MonitorFromWindow(hwndTaskbar, MonitorFromFlags.MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero)
+                return false;
+            var info = MONITORINFO.Create();
+            if (!User32.GetMonitorInfo(monitor, ref info))
+                return false;
+            var m = info.rcMonitor;
+            // Hidden autohide bar slides off the monitor edge it is docked to.
+            return rect.bottom <= m.top || rect.top >= m.bottom || rect.right <= m.left || rect.left >= m.right;
         }
 
         public void Dispose()
@@ -311,7 +353,7 @@ namespace CodexQuota.Taskbar
         {
             if (_automation is not null)
             {
-                try { Marshal.FinalReleaseComObject(_automation); } catch { }
+                try { Marshal.ReleaseComObject(_automation); } catch { }
                 _automation = null;
             }
         }
@@ -323,7 +365,7 @@ namespace CodexQuota.Taskbar
             try
             {
                 if (Marshal.IsComObject(comObject))
-                    Marshal.FinalReleaseComObject(comObject);
+                    Marshal.ReleaseComObject(comObject);
             }
             catch { }
         }

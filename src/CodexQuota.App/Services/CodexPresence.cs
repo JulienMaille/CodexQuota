@@ -41,31 +41,61 @@ public sealed class CodexPresence
 
     public void Start()
     {
-        if (_timer != null)
-            return;
+        // P2: guard with the existing gate — double-Start must not leak a second timer.
+        lock (_gate)
+        {
+            if (_timer != null)
+                return;
 
-        _timer = new Timer(_ => Poll(), null, TimeSpan.Zero, PollInterval);
+            _timer = new Timer(_ => Poll(), null, TimeSpan.Zero, PollInterval);
+        }
     }
 
     public void Stop()
     {
-        _timer?.Dispose();
-        _timer = null;
+        // P2: Stop races Poll safely — Poll only touches _timer via Start/Stop under the gate;
+        // the timer callback never dereferences _timer itself.
+        Timer? timer;
+        lock (_gate)
+        {
+            timer = _timer;
+            _timer = null;
+        }
+
+        timer?.Dispose();
     }
 
     private void Poll()
     {
-        bool running;
+        // P2: per-probe try/catch — a failing probe preserves the previous state instead of
+        // reporting a false "down".
+        bool processRunning;
         try
         {
-            running = UsageCoordinator.IsCodexProcessRunning()
-                || CodexAppSender.FindCodexWindow() != IntPtr.Zero;
+            processRunning = UsageCoordinator.IsCodexProcessRunning();
         }
         catch
         {
-            // A failed probe must not report the app as up; the next tick retries.
-            running = false;
+            lock (_gate)
+            {
+                processRunning = _isRunning;
+            }
         }
+
+        bool windowFound;
+        try
+        {
+            windowFound = CodexAppSender.FindCodexWindow() != IntPtr.Zero;
+        }
+        catch
+        {
+            lock (_gate)
+            {
+                windowFound = _isRunning;
+            }
+        }
+
+        bool running = processRunning || windowFound;
 
         lock (_gate)
         {

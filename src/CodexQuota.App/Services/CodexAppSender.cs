@@ -40,8 +40,30 @@ public sealed class CodexAppSender : ICodexAppSender
 
     private const int ButtonNameCap = 20;
     private const int ForegroundRealizeDelayMs = 800;
+    // P2: cap per-control text reads — the content-vs-empty decision only needs a prefix, and a
+    // full GetText(-1) over a history Document can pull megabytes on every poll.
+    private const int MaxInputTextChars = 4096;
 
+    private readonly object _automationGate = new();
     private IUIAutomation? _automation;
+
+    /// <summary>P2: the cached COM object is touched from the service thread and a
+    /// <c>Task.Run</c> sender thread — serialize lazy-create/reset (cheap, small window).</summary>
+    private IUIAutomation GetAutomation()
+    {
+        lock (_automationGate)
+        {
+            return _automation ??= new CUIAutomation();
+        }
+    }
+
+    private void ResetAutomation()
+    {
+        lock (_automationGate)
+        {
+            _automation = null;
+        }
+    }
 
     public SendPromptResult TrySend(out string detail)
     {
@@ -55,7 +77,7 @@ public sealed class CodexAppSender : ICodexAppSender
                 return SendPromptResult.NoWindow;
             }
 
-            _automation ??= new CUIAutomation();
+            _automation = GetAutomation();
             bool dumpTree = Environment.GetEnvironmentVariable("CODEXQUOTA_DUMP_CODEX_UI") == "1";
 
             bool sawEmptyPrompt = false;
@@ -83,6 +105,9 @@ public sealed class CodexAppSender : ICodexAppSender
                 else
                     sawNonEmptyWindow = true;
 
+                // P2: prefer the exact-title (i==0, post-rank) window for the collapsed-tree retry;
+                // the fewest-buttons heuristic only applies to the retry path and must not prefer a
+                // small dialog over the main window when counts tie or the tree is collapsed.
                 if (i == 0 || probe.TotalButtons < bestButtonCount)
                 {
                     bestHwnd = hwnd;
@@ -117,9 +142,11 @@ public sealed class CodexAppSender : ICodexAppSender
             }
 
             // Collapsed-tree fallback (once): the Chromium a11y tree stays collapsed while the window
-            // is in the background (only caption buttons visible). Briefly restore/foreground the best
-            // candidate to realize the tree, re-query once, then restore the previous foreground.
-            // Never steals focus on the fast path above — only here.
+            // is in the background (only caption buttons visible). Briefly restore/foreground the
+            // exact-title main window (i==0 post-rank) once to realize the tree, then restore the
+            // previous foreground. Never steals focus on the fast path above — only here. The
+            // fewest-buttons tracking above is only a tiebreak signal for this retry path; the
+            // exact-title window stays preferred when counts tie or the tree is collapsed.
             string retryNote = string.Empty;
             if (bestHwnd != IntPtr.Zero && TreeLooksCollapsed(bestButtonNames))
             {
@@ -154,7 +181,7 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             Log.Warning(ex, "Codex auto-send failed");
             detail = ex.Message;
-            _automation = null;
+            ResetAutomation();
             return SendPromptResult.Failed;
         }
     }
@@ -179,7 +206,7 @@ public sealed class CodexAppSender : ICodexAppSender
                 return SendButtonProbeResult.NoWindow;
             }
 
-            _automation ??= new CUIAutomation();
+            _automation = GetAutomation();
 
             bool sawEmptyPrompt = false;
             bool sawNonEmptyWindow = false;
@@ -253,7 +280,7 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             Log.Warning(ex, "Codex send-button probe failed");
             detail = ex.Message;
-            _automation = null;
+            ResetAutomation();
             return SendButtonProbeResult.Failed;
         }
     }
@@ -265,7 +292,9 @@ public sealed class CodexAppSender : ICodexAppSender
     }
 
     /// <summary>Enumerates all visible, titled windows owned by a ChatGPT/codex process, ranked with
-    /// the exact "ChatGPT"/"Codex"-titled main window first.</summary>
+    /// the exact "ChatGPT"/"Codex"-titled main window first. Console hosts
+    /// (<c>ConsoleWindowClass</c>) are excluded explicitly — a `codex` CLI console shares the
+    /// process name but can never host a Send button.</summary>
     internal static List<(IntPtr Hwnd, string Title)> FindCandidateWindows()
     {
         var found = new List<(IntPtr Hwnd, string Title)>();
@@ -273,6 +302,19 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             if (!User32.IsWindowVisible(hwnd))
                 return true;
+
+            // P2: exclude console windows explicitly (codex CLI console shares the process name).
+            try
+            {
+                var className = new StringBuilder(64);
+                if (User32.GetClassName(hwnd, className, className.Capacity) > 0
+                    && string.Equals(className.ToString(), "ConsoleWindowClass", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch
+            {
+                // Best effort: a failed class check must not hide a candidate window.
+            }
 
             User32.GetWindowThreadProcessId(hwnd, out uint pid);
             if (!IsCodexProcess(pid))
@@ -317,9 +359,27 @@ public sealed class CodexAppSender : ICodexAppSender
     private WindowProbe ProbeOneWindow(IntPtr hwnd, string title, int index, bool dumpTree, bool includeInputState)
     {
         IUIAutomationElement? root;
+        IUIAutomation automation;
         try
         {
-            root = _automation!.ElementFromHandle(hwnd);
+            automation = GetAutomation();
+        }
+        catch (Exception ex)
+        {
+            return new WindowProbe
+            {
+                HasElement = false,
+                ButtonNames = new List<string>(),
+                TotalButtons = int.MaxValue,
+                CountText = "?",
+                InputState = string.Empty,
+                Diag = $"win{index} hwnd=0x{hwnd.ToInt64():X} title='{title}' error='{ex.Message}'",
+            };
+        }
+
+        try
+        {
+            root = automation.ElementFromHandle(hwnd);
         }
         catch (Exception ex)
         {
@@ -460,10 +520,46 @@ public sealed class CodexAppSender : ICodexAppSender
             return true;
         if (buttonNames.Count > 5)
             return false;
-        // A realized Chromium composer exposes dozens of buttons, so <=5 is always collapsed.
-        // Caption names are intentionally not checked: they localize (e.g. Reduire/Fermer on
-        // fr-FR Windows) while the count heuristic holds across locales.
+        // P2: count alone is not enough — a small dialog also has <=5 buttons. Only treat the
+        // tree as collapsed when every visible button looks like window chrome (caption-only
+        // names), so a small dialog never triggers a focus steal.
+        foreach (var name in buttonNames)
+        {
+            if (!IsCaptionLikeName(name))
+                return false;
+        }
+
         return true;
+    }
+
+    /// <summary>Caption/chrome button names across locales (Minimize/Maximize/Close et al).
+    /// A realized Chromium composer exposes dozens of buttons, so <=5 caption-only buttons means
+    /// the accessibility tree never materialized.</summary>
+    private static bool IsCaptionLikeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return true; // unnamed buttons in a tiny tree read as chrome, not composer controls.
+        if (name.StartsWith("id='", StringComparison.OrdinalIgnoreCase))
+            return false; // automation-id-only entries came from non-caption controls.
+        string n = name.Trim();
+        string[] captionTokens =
+        {
+            "minimize", "maximize", "restore", "close",
+            "minimiser", "minimizar", "reduire", "réduire", "reduzir", "minimieren", "ridurre",
+            "agrandir", "maximizar", "maximieren", "ingrandire", "restaur", "fermer", "fechar",
+            "schlie", "chiudi", "cerrar",
+        };
+        foreach (var token in captionTokens)
+        {
+            if (n.Contains(token, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // Single-glyph caption symbols (— ▢ ✕ × ─ ━ ╳) with no other text.
+        if (n.Length <= 2)
+            return true;
+
+        return false;
     }
 
     /// <summary>Realizes a collapsed Chromium tree: restore if minimized, foreground once,
@@ -483,7 +579,7 @@ public sealed class CodexAppSender : ICodexAppSender
         bool wasIconic = false;
         try
         {
-            _automation ??= new CUIAutomation();
+            GetAutomation();
             try
             {
                 wasIconic = User32.IsIconic(hwnd);
@@ -501,7 +597,9 @@ public sealed class CodexAppSender : ICodexAppSender
             IUIAutomationElement? root;
             try
             {
-                root = _automation!.ElementFromHandle(hwnd);
+                // GetAutomation() above already ensured the cached instance; re-read under the
+                // gate so a concurrent ResetAutomation() cannot null it mid-path.
+                root = GetAutomation().ElementFromHandle(hwnd);
             }
             catch (Exception ex)
             {
@@ -614,9 +712,11 @@ public sealed class CodexAppSender : ICodexAppSender
 
     private bool? AreAllInputsEmpty(IUIAutomationElement root)
     {
-        var condition = _automation!.CreateOrCondition(
-            _automation.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_EditControlTypeId),
-            _automation.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_DocumentControlTypeId));
+        // P2: snapshot the cached COM instance so a concurrent ResetAutomation() cannot null it.
+        var automation = GetAutomation();
+        var condition = automation.CreateOrCondition(
+            automation.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_EditControlTypeId),
+            automation.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_DocumentControlTypeId));
         var inputs = root.FindAll(TreeScope.TreeScope_Descendants, condition);
         if (inputs is null || inputs.Length == 0)
             return true; // P0: total failure (no readable composer input) blocks, never sendable.
@@ -645,13 +745,14 @@ public sealed class CodexAppSender : ICodexAppSender
                 {
                     if (value.CurrentIsReadOnly != 0)
                         continue; // read-only: history, not the composer.
-                    text = value.CurrentValue;
+                    text = CapText(value.CurrentValue);
                 }
                 catch { sawInputWithUnknownContent = true; continue; }
             }
             else if (input.GetCurrentPattern(UIA_PatternIds.UIA_TextPatternId) is IUIAutomationTextPattern textPattern)
             {
-                try { text = textPattern.DocumentRange.GetText(-1); } catch { sawInputWithUnknownContent = true; continue; }
+                // P2: cap the read — the content-vs-empty decision only needs a prefix.
+                try { text = CapText(textPattern.DocumentRange.GetText(MaxInputTextChars)); } catch { sawInputWithUnknownContent = true; continue; }
             }
             else
             {
@@ -749,7 +850,7 @@ public sealed class CodexAppSender : ICodexAppSender
         totalButtons = 0;
         var buttons = root.FindAll(
             TreeScope.TreeScope_Descendants,
-            _automation!.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId));
+            GetAutomation().CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId));
         if (buttons is null || buttons.Length == 0)
             return null;
 
@@ -815,6 +916,11 @@ public sealed class CodexAppSender : ICodexAppSender
         try { return element.CurrentAutomationId ?? string.Empty; } catch { return string.Empty; }
     }
 
+    /// <summary>P2: truncate a control-text read to the decision prefix. A null/empty read stays
+    /// null/empty so unknown-vs-empty semantics are preserved.</summary>
+    private static string? CapText(string? text)
+        => text is null || text.Length <= MaxInputTextChars ? text : text.Substring(0, MaxInputTextChars);
+
     /// <summary>P0/P1 guard: only enabled, on-screen buttons with a non-empty rect may be invoked.
     /// Hidden/disabled/offscreen matches (background-tree phantoms, "sender"/"sendgrid" lookalikes)
     /// are skipped with a diagnostic, never invoked and never veto the remaining windows.</summary>
@@ -870,8 +976,9 @@ public sealed class CodexAppSender : ICodexAppSender
     private void DumpTree(IUIAutomationElement root)
     {
         IUIAutomationTreeWalker walker;
-        try { walker = _automation!.RawViewWalker; }
-        catch { walker = _automation!.ControlViewWalker; }
+        var automation = GetAutomation();
+        try { walker = automation.RawViewWalker; }
+        catch { walker = automation.ControlViewWalker; }
 
         var lines = new List<string>();
         void Walk(IUIAutomationElement element, int depth)
@@ -904,7 +1011,7 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             var buttons = root.FindAll(
                 TreeScope.TreeScope_Descendants,
-                _automation!.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId));
+                GetAutomation().CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId));
             buttonCount = buttons?.Length ?? -1;
         }
         catch { /* best effort */ }

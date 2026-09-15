@@ -32,7 +32,7 @@ if (Test-Path $Log) {
     Write-Host '--- NEW LOG LINES ---'
     $fs = [System.IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite')
     try {
-        $fs.Seek($before, 'Begin') | Out-Null
+        $fs.Seek([Math]::Min($before, $fs.Length), 'Begin') | Out-Null
         $reader = New-Object System.IO.StreamReader($fs)
         $lines = $reader.ReadToEnd() -split "`r?`n" | Where-Object { $_ }
         $reader.Close()

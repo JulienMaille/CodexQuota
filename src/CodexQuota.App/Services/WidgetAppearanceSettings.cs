@@ -25,15 +25,16 @@ public static class WidgetAppearanceSettings
     // keep their chosen look; a value already set under the new name wins over the legacy one.
     static WidgetAppearanceSettings()
     {
+        // Per-key isolation: one bad value must not skip the other migrations.
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: true);
             if (key is null)
                 return;
 
-            MigrateInverted(key, "HideIcon", ShowIconValueName);
-            MigrateInverted(key, "HideProgressBar", ShowProgressBarValueName);
-            MigrateImminentWindow(key);
+            try { MigrateInverted(key, "HideIcon", ShowIconValueName); } catch { }
+            try { MigrateInverted(key, "HideProgressBar", ShowProgressBarValueName); } catch { }
+            try { MigrateImminentWindow(key); } catch { }
         }
         catch
         {
@@ -50,11 +51,10 @@ public static class WidgetAppearanceSettings
         if (key.GetValue(legacyName) is not int legacy)
             return;
 
+        // No Delete-before-Set: write the new value first so a crash cannot lose both.
+        if (key.GetValue(newName) is not int)
+            key.SetValue(newName, legacy == 0 ? 1 : 0, RegistryValueKind.DWord);
         key.DeleteValue(legacyName, throwOnMissingValue: false);
-        if (key.GetValue(newName) is int)
-            return;
-
-        key.SetValue(newName, legacy == 0 ? 1 : 0, RegistryValueKind.DWord);
     }
 
     /// <summary>
@@ -67,11 +67,9 @@ public static class WidgetAppearanceSettings
         if (key.GetValue("ImminentWindowHours") is not int legacy)
             return;
 
+        if (key.GetValue(ShowImminentDateValueName) is not int)
+            key.SetValue(ShowImminentDateValueName, legacy == 0 ? 0 : 1, RegistryValueKind.DWord);
         key.DeleteValue("ImminentWindowHours", throwOnMissingValue: false);
-        if (key.GetValue(ShowImminentDateValueName) is int)
-            return;
-
-        key.SetValue(ShowImminentDateValueName, legacy == 0 ? 0 : 1, RegistryValueKind.DWord);
     }
 
     /// <summary>Shows the Codex badge glyph in the taskbar tile (cleared shows the name letter instead).</summary>

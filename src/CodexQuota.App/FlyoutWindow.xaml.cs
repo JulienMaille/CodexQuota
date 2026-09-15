@@ -44,6 +44,7 @@ namespace CodexQuota
         private const double FlyoutTravelLogicalPx = 20;
         private static readonly PointInt32 ParkingPosition = new(-32000, -32000);
         private DateTime _shownAtUtc;
+        private int _profileSequence;
 
         public bool IsShown => _shown;
 
@@ -470,22 +471,41 @@ namespace CodexQuota
         /// </summary>
         private async void ApplyProfileAfterPaint(CodexProfileSnapshot? profile)
         {
-            if (profile is null)
-                return;
+            int sequence = ++_profileSequence;
+            try
+            {
+                if (profile is null)
+                    return;
 
-            // First paint wins: yield so the window (already shown) composites its content before the
-            // heatmap work — even the cheap path — has a chance to contend with it. The meters render
-            // synchronously in ShowAbove, so this only adds the lower-priority profile section.
-            await Task.Yield();
+                // First paint wins: yield so the window (already shown) composites its content before the
+                // heatmap work — even the cheap path — has a chance to contend with it. The meters render
+                // synchronously in ShowAbove, so this only adds the lower-priority profile section.
+                await Task.Yield();
 
-            // The scan + merge is pure data work over the journal; do it off the UI thread so a cold
-            // cache cannot stall input or the entrance animation.
-            var rows = await Task.Run(() => CodexUsagePanel.BuildHeatmapRows(profile));
+                if (sequence != _profileSequence)
+                    return;
 
-            if (!_shown)
-                return;
+                // The scan + merge is pure data work over the journal; do it off the UI thread so a cold
+                // cache cannot stall input or the entrance animation.
+                var rows = await Task.Run(() => CodexUsagePanel.BuildHeatmapRows(profile));
 
-            DispatcherQueue.TryEnqueue(() => UsagePanel.RenderProfileRows(profile, rows));
+                if (sequence != _profileSequence)
+                    return;
+
+                if (!_shown)
+                    return;
+
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (sequence != _profileSequence)
+                        return;
+                    UsagePanel.RenderProfileRows(profile, rows);
+                });
+            }
+            catch (Exception ex)
+            {
+                CodexQuota.Diagnostics.Log.Error(ex, "ApplyProfileAfterPaint failed; keeping previous profile content");
+            }
         }
 
         // The flyout is a separate AppWindow, so XAML theme transitions cannot move the window itself.

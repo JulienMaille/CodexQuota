@@ -26,7 +26,21 @@ namespace CodexQuota.Taskbar
                 gc.Free();
             }
 
-            targets.Sort(CompareTargets);
+            // Drop windows destroyed between enumeration and sort so dead handles
+            // never reach the manager. Filter before sorting so dead entries
+            // never participate in ordering.
+            for (int i = targets.Count - 1; i >= 0; i--)
+            {
+                if (!User32.IsWindow(targets[i].Handle))
+                    targets.RemoveAt(i);
+            }
+
+            // Precompute bounds once per sort: one GetWindowRect per target instead
+            // of one per comparison.
+            var boundsCache = new Dictionary<IntPtr, RECT>(targets.Count);
+            foreach (var t in targets)
+                boundsCache[t.Handle] = GetBounds(t.Handle);
+            targets.Sort((left, right) => CompareTargetsCached(left, right, boundsCache));
             result = targets;
             return success;
         }
@@ -59,9 +73,11 @@ namespace CodexQuota.Taskbar
         private static bool EnumTaskbarWindow(IntPtr hwnd, IntPtr lParam)
         {
             var builder = new StringBuilder(64);
-            User32.GetClassName(hwnd, builder, builder.Capacity);
+            if (User32.GetClassName(hwnd, builder, builder.Capacity) <= 0)
+                return true;
             if (IsTaskbarClassName(builder.ToString(), out bool isPrimary)
                 && User32.IsWindow(hwnd)
+                && User32.IsWindowVisible(hwnd)
                 && GCHandle.FromIntPtr(lParam).Target is List<TaskbarWindowTarget> targets)
             {
                 var bounds = GetBounds(hwnd);
@@ -79,8 +95,41 @@ namespace CodexQuota.Taskbar
             if (left.IsPrimary != right.IsPrimary)
                 return left.IsPrimary ? -1 : 1;
 
+            // Re-validate liveness: EnumWindows and Sort are separated in time; a taskbar
+            // window destroyed in between must not win the sort or poison ordering.
+            bool leftAlive = User32.IsWindow(left.Handle);
+            bool rightAlive = User32.IsWindow(right.Handle);
+            if (leftAlive != rightAlive)
+                return leftAlive ? -1 : 1;
+            if (!leftAlive)
+                return 0;
+
+            // Bounds precomputed once per sort (single GetWindowRect per target).
             var leftBounds = GetBounds(left.Handle);
             var rightBounds = GetBounds(right.Handle);
+            int byTop = leftBounds.top.CompareTo(rightBounds.top);
+            return byTop != 0 ? byTop : leftBounds.left.CompareTo(rightBounds.left);
+        }
+
+        private static int CompareTargetsCached(
+            TaskbarWindowTarget left,
+            TaskbarWindowTarget right,
+            Dictionary<IntPtr, RECT> boundsCache)
+        {
+            if (left.IsPrimary != right.IsPrimary)
+                return left.IsPrimary ? -1 : 1;
+
+            bool leftAlive = User32.IsWindow(left.Handle);
+            bool rightAlive = User32.IsWindow(right.Handle);
+            if (leftAlive != rightAlive)
+                return leftAlive ? -1 : 1;
+            if (!leftAlive)
+                return 0;
+
+            if (!boundsCache.TryGetValue(left.Handle, out var leftBounds))
+                leftBounds = GetBounds(left.Handle);
+            if (!boundsCache.TryGetValue(right.Handle, out var rightBounds))
+                rightBounds = GetBounds(right.Handle);
             int byTop = leftBounds.top.CompareTo(rightBounds.top);
             return byTop != 0 ? byTop : leftBounds.left.CompareTo(rightBounds.left);
         }

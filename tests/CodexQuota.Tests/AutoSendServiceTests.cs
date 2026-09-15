@@ -311,6 +311,8 @@ public class AutoSendServiceTests
         service.Arm(AutoSendMode.Always);
 
         // Confirmation fetches keep returning the pre-reset window; stays armed and retries.
+        // Advance past the target+grace so retries anchor to the 30s floor (real trigger time).
+        h.Now = ResetAt.AddSeconds(15);
         for (int i = 0; i < 5; i++)
         {
             h.Scheduler.Fire();

@@ -57,10 +57,12 @@ internal static class LocalCodexUsageScanner
                 folderDay.ToString("MM", CultureInfo.InvariantCulture),
                 folderDay.ToString("dd", CultureInfo.InvariantCulture));
 
-            IEnumerable<string> paths;
+            // Enumerate eagerly inside the try: EnumerateFiles defers I/O until iteration,
+            // so enumerating outside the try would let a mid-scan IO error escape to the caller.
+            string[] paths;
             try
             {
-                paths = Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.TopDirectoryOnly);
+                paths = Directory.GetFiles(directory, "*.jsonl", SearchOption.TopDirectoryOnly);
             }
             catch (IOException)
             {
@@ -70,9 +72,30 @@ internal static class LocalCodexUsageScanner
             {
                 continue;
             }
+            catch (ArgumentException)
+            {
+                continue;
+            }
 
             foreach (string path in paths)
-                total = SaturatingAdd(total, ReadFileTokens(path, day));
+            {
+                try
+                {
+                    total = SaturatingAdd(total, ReadFileTokens(path, day));
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    continue;
+                }
+                catch (ArgumentException)
+                {
+                    continue;
+                }
+            }
         }
 
         return total;
@@ -111,7 +134,7 @@ internal static class LocalCodexUsageScanner
         // scan answers every sub-range — today's tokens (ReadTodayTokens), the prior-day spillover, and
         // the whole heatmap window — no matter the order the callers ask for them.
         if (TryGetCached(home, start, end) is { } hit)
-            return hit;
+            return SliceRange(hit, start, end);
 
         // Scan the canonical window in one pass so one I/O+parse run fills the whole cache: from
         // (ScanWindowWeeks back) to end. A narrower sub-request widens to this canonical range so later
@@ -128,8 +151,25 @@ internal static class LocalCodexUsageScanner
             _cachedScanEnd = scanEnd;
             _cachedAtUtc = DateTimeOffset.UtcNow;
             _cachedRange = fresh;
-            return fresh;
+            // Contract: return only the requested [start, end]; the cache keeps the canonical window.
+            return SliceRange(fresh, start, end);
         }
+    }
+
+    /// <summary>Filters a scanned range down to the requested [start, end] window.</summary>
+    private static IReadOnlyDictionary<DateOnly, long> SliceRange(
+        IReadOnlyDictionary<DateOnly, long> range,
+        DateOnly start,
+        DateOnly end)
+    {
+        var sliced = new Dictionary<DateOnly, long>();
+        foreach (var (day, tokens) in range)
+        {
+            if (day >= start && day <= end)
+                sliced[day] = tokens;
+        }
+
+        return sliced;
     }
 
     private static IReadOnlyDictionary<DateOnly, long>? TryGetCached(string home, DateOnly requestedStart, DateOnly requestedEnd)
@@ -165,8 +205,11 @@ internal static class LocalCodexUsageScanner
 
             while (reader.ReadLine() is { } line)
             {
-                if (line.IndexOf("\"type\":\"event_msg\"", StringComparison.Ordinal) < 0
-                    || line.IndexOf("\"type\":\"token_count\"", StringComparison.Ordinal) < 0)
+                // Fast-path pre-filter only; exact field matching happens on the parsed JSON below.
+                // Loose contains (not spacing-sensitive) so pretty-printed journals with spaces
+                // like "type": "event_msg" are still attempted rather than silently skipped.
+                if (line.IndexOf("event_msg", StringComparison.Ordinal) < 0
+                    || line.IndexOf("token_count", StringComparison.Ordinal) < 0)
                 {
                     continue;
                 }
@@ -252,7 +295,11 @@ internal static class LocalCodexUsageScanner
     private static bool TryUsageTotal(JsonElement usage, out long total)
     {
         if (TryInt64(usage, "total_tokens", out total))
+        {
+            // Clamp corrupt negative journal totals before they poison the baseline/delta math.
+            total = Math.Max(0, total);
             return true;
+        }
 
         bool hasInput = TryInt64(usage, "input_tokens", out long input);
         bool hasOutput = TryInt64(usage, "output_tokens", out long output);
@@ -311,7 +358,18 @@ internal static class LocalCodexUsageScanner
     {
         string? configured = codexHome ?? Environment.GetEnvironmentVariable("CODEX_HOME");
         if (!string.IsNullOrWhiteSpace(configured))
-            return configured.Trim();
+        {
+            try
+            {
+                return Path.GetFullPath(configured.Trim());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                // Malformed/illegal CODEX_HOME must degrade to the default journals path,
+                // not throw out of every scanner read (the flyout opens on this path).
+                Diagnostics.Log.Warning(ex, "Ignoring invalid CODEX_HOME; using the default Codex home");
+            }
+        }
 
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
     }

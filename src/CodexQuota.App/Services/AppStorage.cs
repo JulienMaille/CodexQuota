@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 
 namespace CodexQuota;
 
@@ -25,6 +26,11 @@ public static class AppStorage
 
         Directory.CreateDirectory(targetDir);
 
+        // Only migrate "when empty": a non-empty target already has authoritative data.
+        if (Directory.EnumerateFileSystemEntries(targetDir).Any())
+            return;
+
+        int failures = 0;
         foreach (var file in Directory.EnumerateFiles(legacyDir))
         {
             var name = Path.GetFileName(file);
@@ -36,10 +42,15 @@ public static class AppStorage
             {
                 File.Copy(file, dest);
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort migration; user can copy credentials manually.
+                // Best-effort migration; surface partial failure instead of swallowing it.
+                failures++;
+                Diagnostics.Log.Debug($"legacy data migration: skipping '{name}': {ex.Message}");
             }
         }
+
+        if (failures > 0)
+            Diagnostics.Log.Warning($"Legacy data migration completed with {failures} skipped file(s); user can copy credentials manually.");
     }
 }

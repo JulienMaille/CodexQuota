@@ -19,6 +19,8 @@ namespace CodexQuota
         private Timer? _taskbarInitializationTimer;
         private int _taskbarInitializationAttempts;
         private int _taskbarInitializationQueued;
+        private int _launched;
+        private DateTime _taskbarInitializationDeadline = DateTime.MaxValue;
 
         public App()
         {
@@ -37,6 +39,10 @@ namespace CodexQuota
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
+            // Single-instance redirect can deliver OnLaunched more than once; keep it idempotent
+            // so timers/coordinators are not started twice.
+            if (Interlocked.Exchange(ref _launched, 1) != 0)
+                return;
             Dispatcher = DispatcherQueue.GetForCurrentThread();
 
             Log.Information("CodexQuota launching");
@@ -73,9 +79,11 @@ namespace CodexQuota
 
         private void ScheduleTaskbarInitialization()
         {
-            _taskbarInitializationTimer?.Dispose();
+            var old = Interlocked.Exchange(ref _taskbarInitializationTimer, null);
+            try { old?.Dispose(); } catch { }
             _taskbarInitializationAttempts = 0;
             _taskbarInitializationQueued = 0;
+            _taskbarInitializationDeadline = DateTime.UtcNow.AddMinutes(2);
             _taskbarInitializationTimer = new Timer(
                 _ =>
                 {
@@ -92,9 +100,12 @@ namespace CodexQuota
                     }
 
                     var completedAttempts = Interlocked.Increment(ref _taskbarInitializationAttempts);
-                    Log.Warning("Could not enqueue taskbar manager initialization");
-                    if (!ShouldRetryTaskbarInitialization(completedAttempts))
+                    Log.Warning($"Could not enqueue taskbar manager initialization (attempt {completedAttempts}/{TaskbarInitializationMaxAttempts})");
+                    if (!ShouldRetryTaskbarInitialization(completedAttempts, _taskbarInitializationDeadline))
+                    {
+                        Log.Warning($"Taskbar manager initialization giving up after {completedAttempts} attempt(s)");
                         StopTaskbarInitializationTimer();
+                    }
                 },
                 null,
                 TimeSpan.FromMilliseconds(TaskbarInitializationInitialDelayMilliseconds),
@@ -111,7 +122,7 @@ namespace CodexQuota
                 if (dispatcher is null)
                 {
                     Log.Warning("Taskbar manager initialization skipped because the dispatcher is unavailable");
-                    if (!ShouldRetryTaskbarInitialization(completedAttempts))
+                    if (!ShouldRetryTaskbarInitialization(completedAttempts, _taskbarInitializationDeadline))
                         StopTaskbarInitializationTimer();
                     return;
                 }
@@ -122,7 +133,7 @@ namespace CodexQuota
             catch (Exception ex)
             {
                 Log.Warning(ex, "Taskbar manager initialization failed");
-                if (!ShouldRetryTaskbarInitialization(completedAttempts))
+                if (!ShouldRetryTaskbarInitialization(completedAttempts, _taskbarInitializationDeadline))
                     StopTaskbarInitializationTimer();
             }
             finally
@@ -154,12 +165,15 @@ namespace CodexQuota
 
         private void StopTaskbarInitializationTimer()
         {
-            try { _taskbarInitializationTimer?.Dispose(); } catch { }
-            _taskbarInitializationTimer = null;
+            var timer = Interlocked.Exchange(ref _taskbarInitializationTimer, null);
+            try { timer?.Dispose(); } catch { }
             Interlocked.Exchange(ref _taskbarInitializationQueued, 0);
         }
 
         internal static bool ShouldRetryTaskbarInitialization(int completedAttempts)
-            => completedAttempts < TaskbarInitializationMaxAttempts;
+            => ShouldRetryTaskbarInitialization(completedAttempts, DateTime.MaxValue);
+
+        internal static bool ShouldRetryTaskbarInitialization(int completedAttempts, DateTime deadlineUtc)
+            => completedAttempts < TaskbarInitializationMaxAttempts && DateTime.UtcNow < deadlineUtc;
     }
 }

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using CodexQuota.Diagnostics;
@@ -17,6 +20,7 @@ namespace CodexQuota.Taskbar
         private static readonly List<TaskBarWidget> _widgetBuffer = new();
         private static FlyoutWindow? _flyout;
         private static DispatcherQueue? _dispatcher;
+        private static int? _uiThreadId;
         private static DispatcherTimer? _widgetHealthTimer;
         private static bool _initialized;
         private static bool _isReconcilingWidgets;
@@ -33,6 +37,8 @@ namespace CodexQuota.Taskbar
         public static void Initialize(DispatcherQueue dispatcher)
         {
             _dispatcher = dispatcher;
+            _uiThreadId ??= Environment.CurrentManagedThreadId;
+            VerifyUiThread();
 
             EnsureWidgets();
 
@@ -69,8 +75,17 @@ namespace CodexQuota.Taskbar
             _widgetHealthTimer.Start();
         }
 
+        // Widgets/_widgetBuffer are UI-thread owned; every mutation path asserts thread affinity
+        // (captured managed thread id — DispatcherQueue exposes no VerifyAccess/HasThreadAccess).
+        private static void VerifyUiThread([CallerMemberName] string? caller = null)
+        {
+            bool onUiThread = _uiThreadId is null || Environment.CurrentManagedThreadId == _uiThreadId;
+            Debug.Assert(onUiThread, $"TaskBarManager.{caller} must run on the UI thread.");
+        }
+
         private static void EnsureWidgets()
         {
+            VerifyUiThread();
             if (_isReconcilingWidgets)
                 return;
 
@@ -158,8 +173,10 @@ namespace CodexQuota.Taskbar
             return $"target mismatch (primary {widget.IsPrimaryTaskbar}->{target.Value.IsPrimary} display '{widget.DisplayKey}'->'{target.Value.DisplayKey}');";
         }
 
+        // SnapshotWidgets mutation path is UI-thread only (see _uiThreadId/VerifyUiThread).
         private static void CreateWidget(TaskbarWindowTarget target)
         {
+            VerifyUiThread();
             TaskBarWidget? widget = null;
             try
             {
@@ -187,6 +204,7 @@ namespace CodexQuota.Taskbar
 
         private static void OnWidgetDestroying(TaskBarWidget widget)
         {
+            VerifyUiThread();
             if (Widgets.TryGetValue(widget.TaskbarHandle, out var current) && ReferenceEquals(current, widget))
                 Widgets.Remove(widget.TaskbarHandle);
 
@@ -221,14 +239,37 @@ namespace CodexQuota.Taskbar
                     LogWidgetApply(result.Id, "sync");
                 }
 
-                // Hydrating from a placeholder/failed snapshot leaves the tile showing a non-value while
-                // the flyout fetches its own data. Kick a fetch so the widget resolves on its own (#21).
-                if (toApply is null or { Ok: false })
+                // Hydrating from a placeholder/failed/stale snapshot leaves the tile showing a non-value
+                // while the flyout fetches its own data. Only a fresh cache hit clears the fetch; a stale
+                // LastState seed must still kick a fetch so the widget resolves on its own (#21).
+                if (toApply is null or { Ok: false } or { IsStale: true })
                     needsFetch = true;
             }
 
             if (needsFetch)
-                _ = coordinator.TickAsync(force: true);
+                CoalesceSyncFetch(coordinator);
+        }
+
+        // A batch create (one EnsureWidgets pass, N taskbars) must not fire N forced fetches. One
+        // in-flight sync fetch is enough; later requests join it. Observed: faults are logged.
+        private static Task? _pendingSyncFetch;
+        private static void CoalesceSyncFetch(UsageCoordinator coordinator)
+        {
+            if (_pendingSyncFetch is { } pending && !pending.IsCompleted)
+                return;
+            _pendingSyncFetch = ObserveSyncFetch(coordinator);
+        }
+
+        private static async Task ObserveSyncFetch(UsageCoordinator coordinator)
+        {
+            try
+            {
+                await coordinator.TickAsync(force: true);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Taskbar widget sync fetch failed");
+            }
         }
 
         /// <summary>
@@ -294,6 +335,7 @@ namespace CodexQuota.Taskbar
 
         private static void ApplyStateChanged(UsageResult result)
         {
+            VerifyUiThread();
             var coordinator = UsageCoordinator.Instance;
             var providers = coordinator.WidgetDisplayProviders;
             bool isDisplayed = providers.Contains(result.Id);
@@ -323,6 +365,7 @@ namespace CodexQuota.Taskbar
         /// </summary>
         private static void SnapshotWidgets()
         {
+            VerifyUiThread();
             _widgetBuffer.Clear();
             foreach (var widget in Widgets.Values)
                 _widgetBuffer.Add(widget);
@@ -339,6 +382,7 @@ namespace CodexQuota.Taskbar
 
         private static void OnQuitting()
         {
+            VerifyUiThread();
             UsageCoordinator.Instance.StateChanged -= OnStateChanged;
             _initialized = false;
             _widgetHealthTimer?.Stop();

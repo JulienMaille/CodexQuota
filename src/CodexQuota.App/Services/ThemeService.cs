@@ -1,4 +1,7 @@
+using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using CodexQuota.Diagnostics;
 
 namespace CodexQuota
 {
@@ -18,7 +21,25 @@ namespace CodexQuota
         public static void Apply(ElementTheme theme)
         {
             Current = theme;
-            if (_root != null) _root.RequestedTheme = theme;
+            var root = _root;
+            if (root is null)
+                return;
+
+            var dispatcher = App.Dispatcher;
+            if (dispatcher is null)
+            {
+                Log.Debug("ThemeService.Apply dropped: dispatcher unavailable");
+                return;
+            }
+
+            if (!dispatcher.TryEnqueue(() =>
+            {
+                try { root.RequestedTheme = theme; }
+                catch (Exception ex) { Log.Debug($"ThemeService.Apply failed: {ex.Message}"); }
+            }))
+            {
+                Log.Debug("ThemeService.Apply dropped: TryEnqueue failed");
+            }
         }
     }
 }

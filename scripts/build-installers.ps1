@@ -26,14 +26,29 @@ if (-not (Test-Path $DotNet)) { throw "dotnet not found at $DotNet" }
 if (-not (Test-Path $Iscc))   { throw "Inno Setup not found at $Iscc" }
 
 # A running instance locks publish output; the app is single-instance, so stop it before rebuild.
-Get-Process CodexQuota -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 2
+$running = Get-Process CodexQuota -ErrorAction SilentlyContinue
+if ($running) {
+    $running | Stop-Process -Force
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Process CodexQuota -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {
+        Start-Sleep -Milliseconds 500
+    }
+}
 
 if (-not $SkipPublish) {
     foreach ($t in $Targets) {
         Write-Host "=== Publishing $($t.Arch) ==="
-        & $DotNet publish $Project -c Release -p:PublishProfile=$($t.Profile) --nologo
+        $publishArgs = @($Project, '-c', 'Release', "-p:PublishProfile=$($t.Profile)", '--nologo')
+        if ($Version) { $publishArgs += "-p:Version=$Version" }
+        & $DotNet publish @publishArgs
         if ($LASTEXITCODE -ne 0) { throw "publish $($t.Arch) failed" }
+    }
+} else {
+    foreach ($t in $Targets) {
+        $exePath = Join-Path $Repo "src\CodexQuota.App\bin\Release\net9.0-windows10.0.19041.0\$($t.Rid)\publish\CodexQuota.exe"
+        if ((Test-Path $exePath) -and (Test-Path $Project) -and ((Get-Item $Project).LastWriteTime -gt (Get-Item $exePath).LastWriteTime)) {
+            Write-Warning "Skipping publish but exe is older than source for $($t.Arch): $exePath"
+        }
     }
 }
 
@@ -45,8 +60,8 @@ foreach ($t in $Targets) {
     }
     $args = @(
         (Join-Path $Repo 'installer\CodexQuota.iss'),
-        "/DPublishDir=$publishDir",
-        "/DOutputDir=$Artifacts",
+        "/DPublishDir=`"$publishDir`"",
+        "/DOutputDir=`"$Artifacts`"",
         "/DTargetArch=$($t.Arch)"
     )
     if ($Version) { $args += "/DMyAppVersion=$Version" }
@@ -57,7 +72,9 @@ foreach ($t in $Targets) {
 
 Write-Host ''
 Write-Host '=== Installers ==='
-Get-ChildItem $Artifacts -Filter 'CodexQuotaSetup-*.exe' | Sort-Object Name | ForEach-Object {
+$installers = Get-ChildItem $Artifacts -Filter 'CodexQuotaSetup-*.exe' | Sort-Object Name
+if (-not $installers) { throw "no installers produced in $Artifacts" }
+$installers | ForEach-Object {
     $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     '{0}  {1} bytes  sha256:{2}' -f $_.Name, $_.Length, $hash
 }

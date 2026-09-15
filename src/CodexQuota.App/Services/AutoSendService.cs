@@ -359,7 +359,7 @@ public sealed class AutoSendService
         PublishStatus();
     }
 
-    private void RescheduleTrigger()
+    private void RescheduleTrigger(TimeSpan? minDelay = null)
     {
         TimeSpan delay;
         lock (_gate)
@@ -372,6 +372,8 @@ public sealed class AutoSendService
 
         if (delay < TimeSpan.Zero)
             delay = TimeSpan.Zero;
+        if (minDelay is { } floor && delay < floor)
+            delay = floor;
 
         _scheduler.Schedule(delay, OnTriggerDue);
     }
@@ -429,7 +431,10 @@ public sealed class AutoSendService
         }
 
         Log.Information("Auto-send: reset not observed yet, retrying shortly");
-        _scheduler.Schedule(ConfirmRetryDelay, OnTriggerDue);
+        // P2: re-anchor to the (possibly chased) target instead of a fixed 30s spin — a target
+        // that slid forward would otherwise burn the retry budget and report ResetNotObserved.
+        // Keep a 30s floor so a tight chase loop cannot hot-spin the refresh path.
+        RescheduleTrigger(minDelay: ConfirmRetryDelay);
         PublishStatus();
     }
 
@@ -463,11 +468,24 @@ public sealed class AutoSendService
         }
 
         // UIA against another process can block; keep it off the coordinator's thread.
-        var (result, detail) = await Task.Run(() =>
+        // P2: a throwing sender must surface as SendFailed, never as an unobserved task.
+        SendPromptResult result;
+        string detail;
+        try
         {
-            var sendResult = _sender.TrySend(out string sendDetail);
-            return (sendResult, sendDetail);
-        }).ConfigureAwait(false);
+            var sendTask = Task.Run(() =>
+            {
+                var sendResult = _sender.TrySend(out string sendDetail);
+                return (sendResult, sendDetail);
+            });
+            (result, detail) = await sendTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Auto-send sender threw");
+            FinishLocked(AutoSendOutcome.SendFailed, ex.Message);
+            return;
+        }
 
         AutoSendOutcome outcome = result switch
         {
@@ -498,7 +516,12 @@ public sealed class AutoSendService
             // A finish already recorded (or a clean disarm) blocks a second terminal transition; an
             // arm rejection is allowed even from the initial Idle state.
             if (_state == AutoSendState.Idle && _outcome != AutoSendOutcome.None)
-                return;
+            {
+                // P2: a repeated ArmRejected must still be visible — a stale outcome (e.g. Sent from
+                // a previous arm) would otherwise hide the rejection from the UI. Refresh it.
+                if (outcome != AutoSendOutcome.ArmRejected)
+                    return;
+            }
 
             _state = AutoSendState.Idle;
             _outcome = outcome;

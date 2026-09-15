@@ -46,28 +46,35 @@ namespace CodexQuota.Usage.Providers
 
         public async Task<ProviderFetchResult> FetchUsageAsync(CancellationToken ct = default)
         {
-            var creds = await LoadCredentialsAsync().ConfigureAwait(false);
+            var creds = await LoadCredentialsAsync(ct).ConfigureAwait(false);
 
             using var request = CreateRequest(creds, UsagePath);
-            using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
+            try
+            {
+                using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
 
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                throw new ProviderException(ProviderErrorKind.RateLimited, "Codex API rate limit reached.");
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                    throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    throw new ProviderException(ProviderErrorKind.RateLimited, "Codex API rate limit reached.");
 
-            if (!response.IsSuccessStatusCode)
-                throw new ProviderException(ProviderErrorKind.Other, $"Codex API returned {(int)response.StatusCode}");
+                if (!response.IsSuccessStatusCode)
+                    throw new ProviderException(ProviderErrorKind.Other, $"Codex API returned {(int)response.StatusCode}");
 
-            double? headerPrimary = TryHeaderF64(response, "x-codex-primary-used-percent");
-            double? headerSecondary = TryHeaderF64(response, "x-codex-secondary-used-percent");
-            double? headerCredits = TryHeaderF64(response, "x-codex-credits-balance");
+                double? headerPrimary = TryHeaderF64(response, "x-codex-primary-used-percent");
+                double? headerSecondary = TryHeaderF64(response, "x-codex-secondary-used-percent");
+                double? headerCredits = TryHeaderF64(response, "x-codex-credits-balance");
 
-            using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            using var resetCreditsDoc = await FetchResetCreditsAsync(creds, ct).ConfigureAwait(false);
+                using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+                using var resetCreditsDoc = await FetchResetCreditsAsync(creds, ct).ConfigureAwait(false);
 
-            return BuildResult(doc.RootElement, headerPrimary, headerSecondary, headerCredits, resetCreditsDoc?.RootElement);
+                return BuildResult(doc.RootElement, headerPrimary, headerSecondary, headerCredits, resetCreditsDoc?.RootElement);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new ProviderException(ProviderErrorKind.Timeout, "Codex API timed out.");
+            }
         }
 
         internal static ProviderFetchResult BuildResult(
@@ -132,8 +139,8 @@ namespace CodexQuota.Usage.Providers
                 if (!response.IsSuccessStatusCode)
                     return null;
 
-                using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                return await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+                using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+                return await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -157,7 +164,7 @@ namespace CodexQuota.Usage.Providers
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(ProfileTimeout);
 
-            var creds = await LoadCredentialsAsync().ConfigureAwait(false);
+            var creds = await LoadCredentialsAsync(ct).ConfigureAwait(false);
 
             using var request = CreateRequest(creds, ProfilePath);
             try
@@ -176,7 +183,17 @@ namespace CodexQuota.Usage.Providers
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
                 var profile = ParseProfile(doc.RootElement);
                 var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
-                return profile.WithLiveToday(today, LocalCodexUsageScanner.ReadTodayTokens(today));
+                long liveTodayTokens;
+                try
+                {
+                    // Best-effort: a corrupt/unreadable journal must never fail the whole profile.
+                    liveTodayTokens = LocalCodexUsageScanner.ReadTodayTokens(today);
+                }
+                catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+                {
+                    liveTodayTokens = 0;
+                }
+                return profile.WithLiveToday(today, liveTodayTokens);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -441,7 +458,7 @@ namespace CodexQuota.Usage.Providers
 
             var snapshot = new CostSnapshot(balance.Value, "credits", "Credits");
             if (limit is { } lim && lim > 0)
-                snapshot.WithLimit(lim);
+                snapshot = snapshot.WithLimit(lim);
             return snapshot;
         }
 
@@ -544,46 +561,66 @@ namespace CodexQuota.Usage.Providers
 
         private sealed record Credentials(string AccessToken, string? AccountId);
 
-        private static async Task<Credentials> LoadCredentialsAsync()
+        private static async Task<Credentials> LoadCredentialsAsync(CancellationToken ct = default)
         {
             var authPath = GetAuthPath();
             if (!File.Exists(authPath))
                 throw new ProviderException(ProviderErrorKind.AuthRequired, "Codex sign-in not found: ~/.codex/auth.json is missing. Open the Codex app to sign in, or add OPENAI_API_KEY to that file.");
 
-            var json = File.ReadAllText(authPath);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
+            string json;
+            try
             {
-                string? access = tokens.TryGetProperty("access_token", out var at) ? at.GetString() : null;
-                string? refresh = tokens.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
-                string? acct = tokens.TryGetProperty("account_id", out var ac) ? ac.GetString() : null;
+                json = File.ReadAllText(authPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new ProviderException(ProviderErrorKind.Other, $"Could not read Codex auth.json: {ex.Message}");
+            }
 
-                if (!string.IsNullOrEmpty(access))
+            JsonDocument doc;
+            try
+            {
+                doc = JsonDocument.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                throw new ProviderException(ProviderErrorKind.Parse, $"Codex auth.json is not valid JSON: {ex.Message}");
+            }
+            using (doc)
+            {
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
                 {
-                    // Auto-refresh when the access token is expired or expiring within 5 minutes.
-                    if (IsTokenExpired(access) && !string.IsNullOrEmpty(refresh))
+                    string? access = tokens.TryGetProperty("access_token", out var at) && at.ValueKind == JsonValueKind.String ? at.GetString() : null;
+                    string? refresh = tokens.TryGetProperty("refresh_token", out var rt) && rt.ValueKind == JsonValueKind.String ? rt.GetString() : null;
+                    string? acct = tokens.TryGetProperty("account_id", out var ac) && ac.ValueKind == JsonValueKind.String ? ac.GetString() : null;
+
+                    if (!string.IsNullOrEmpty(access))
                     {
-                        var refreshed = await RefreshAccessTokenAsync(refresh).ConfigureAwait(false);
-                        if (refreshed != null)
+                        // Auto-refresh when the access token is expired or expiring within 5 minutes.
+                        if (IsTokenExpired(access) && !string.IsNullOrEmpty(refresh))
                         {
-                            SaveRefreshedTokens(authPath, refreshed.Value.AccessToken, refreshed.Value.RefreshToken, acct);
-                            return new Credentials(refreshed.Value.AccessToken, acct);
+                            var refreshed = await RefreshAccessTokenAsync(refresh, ct).ConfigureAwait(false);
+                            if (refreshed != null)
+                            {
+                                SaveRefreshedTokens(authPath, refreshed.Value.AccessToken, refreshed.Value.RefreshToken, acct);
+                                return new Credentials(refreshed.Value.AccessToken, acct);
+                            }
                         }
+
+                        return new Credentials(access, acct);
                     }
-
-                    return new Credentials(access, acct);
                 }
-            }
 
-            if (root.TryGetProperty("OPENAI_API_KEY", out var key) && key.ValueKind == JsonValueKind.String)
-            {
-                var k = key.GetString()?.Trim();
-                if (!string.IsNullOrEmpty(k)) return new Credentials(k!, null);
-            }
+                if (root.TryGetProperty("OPENAI_API_KEY", out var key) && key.ValueKind == JsonValueKind.String)
+                {
+                    var k = key.GetString()?.Trim();
+                    if (!string.IsNullOrEmpty(k)) return new Credentials(k!, null);
+                }
 
-            throw new ProviderException(ProviderErrorKind.Parse, "Codex auth.json contains no usable token.");
+                throw new ProviderException(ProviderErrorKind.Parse, "Codex auth.json contains no usable token.");
+            }
         }
 
         /// <summary>Returns true when the JWT exp claim is within 5 minutes of now or already past.</summary>
@@ -621,7 +658,7 @@ namespace CodexQuota.Usage.Providers
             public string RefreshToken { get; init; }
         }
 
-        private static async Task<RefreshedTokens?> RefreshAccessTokenAsync(string refreshToken)
+        private static async Task<RefreshedTokens?> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct = default)
         {
             try
             {
@@ -633,16 +670,18 @@ namespace CodexQuota.Usage.Providers
                     ["client_id"] = CodexClientId,
                 });
 
-                using var response = await Http.SendAsync(request, CancellationToken.None).ConfigureAwait(false);
+                // The caller's CT (itself linked to the fetch timeout) cancels promptly; the 30s
+                // HttpClient timeout remains the ceiling.
+                using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                     return null;
 
-                using var stream = await response.Content.ReadAsStreamAsync(CancellationToken.None).ConfigureAwait(false);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
                 var root = doc.RootElement;
 
-                string? newAccess = root.TryGetProperty("access_token", out var atEl) ? atEl.GetString() : null;
-                string? newRefresh = root.TryGetProperty("refresh_token", out var rtEl) ? rtEl.GetString() : refreshToken;
+                string? newAccess = root.TryGetProperty("access_token", out var atEl) && atEl.ValueKind == JsonValueKind.String ? atEl.GetString() : null;
+                string? newRefresh = root.TryGetProperty("refresh_token", out var rtEl) && rtEl.ValueKind == JsonValueKind.String ? rtEl.GetString() : refreshToken;
 
                 if (string.IsNullOrEmpty(newAccess))
                     return null;

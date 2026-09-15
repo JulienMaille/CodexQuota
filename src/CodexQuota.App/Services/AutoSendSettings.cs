@@ -67,27 +67,33 @@ public sealed class AutoSendSettings : IAutoSendStore
     public long TargetResetAtUtcTicks
     {
         get => ReadLong(TargetResetAtValueName, 0);
-        set => WriteLong(TargetResetAtValueName, value);
+        set => WriteLong(TargetResetAtValueName, NormalizeTicks(value));
     }
 
     public long BaselineWeeklyResetAtUtcTicks
     {
         get => ReadLong(BaselineWeeklyValueName, 0);
-        set => WriteLong(BaselineWeeklyValueName, value);
+        set => WriteLong(BaselineWeeklyValueName, NormalizeTicks(value));
     }
 
     public long LastFiredResetAtUtcTicks
     {
         get => ReadLong(LastFiredValueName, 0);
-        set => WriteLong(LastFiredValueName, value);
+        set => WriteLong(LastFiredValueName, NormalizeTicks(value));
     }
+
+    /// <summary>P2: corrupt registry values must never crash
+    /// <c>new DateTimeOffset(ticks)</c> in <c>Start</c>. Out-of-range ticks coerce to 0 (disarmed).</summary>
+    internal static long NormalizeTicks(long ticks)
+        => ticks >= DateTimeOffset.MinValue.UtcTicks && ticks <= DateTimeOffset.MaxValue.UtcTicks ? ticks : 0;
 
     private static int ReadInt(string name, int defaultValue)
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            return key?.GetValue(name) is int value ? value : defaultValue;
+            // P2: accept DWORD/QWORD/REG_SZ instead of silently defaulting on a type mismatch.
+            return PaceSettings.CoerceInt(key?.GetValue(name), defaultValue);
         }
         catch
         {
@@ -116,7 +122,33 @@ public sealed class AutoSendSettings : IAutoSendStore
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            return key?.GetValue(name) is long value ? value : defaultValue;
+            return CoerceLong(key?.GetValue(name), defaultValue);
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    internal static long CoerceLong(object? raw, long defaultValue)
+    {
+        try
+        {
+            switch (raw)
+            {
+                case null:
+                    return defaultValue;
+                case long l:
+                    return l;
+                case int i:
+                    return i;
+                case string s when long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long parsed):
+                    return parsed;
+                case IConvertible convertible:
+                    return Convert.ToInt64(convertible, System.Globalization.CultureInfo.InvariantCulture);
+                default:
+                    return defaultValue;
+            }
         }
         catch
         {

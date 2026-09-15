@@ -121,13 +121,15 @@ namespace CodexQuota.Controls
 
                     PlanText.Text = AppStrings.LocalizePlan(usage?.LoginMethod);
                     EmailText.Text = usage?.Email ?? string.Empty;
-                    nextRows.Add(new TextBlock
+                    var errorBlock = new TextBlock
                     {
                         Text = AppStrings.LocalizeStatus(result.Error, "Ui.UsageUnavailable"),
                         Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                         TextWrapping = TextWrapping.Wrap,
-                    });
+                    };
+                    if (LookupBrush("TextFillColorSecondaryBrush") is { } secondaryBrush)
+                        errorBlock.Foreground = secondaryBrush;
+                    nextRows.Add(errorBlock);
                     UpdatedText.Text = FormatUpdatedLine(result);
                     SwapRows(nextRows);
                     return;
@@ -173,12 +175,19 @@ namespace CodexQuota.Controls
         /// <summary>Renders the Codex profile's daily token activity as a heatmap grid. Hidden when null.</summary>
         public void SetProfile(CodexProfileSnapshot? profile)
         {
-            ProfileSection.Visibility = profile is null ? Visibility.Collapsed : Visibility.Visible;
-            if (profile is null)
-                return;
+            try
+            {
+                ProfileSection.Visibility = profile is null ? Visibility.Collapsed : Visibility.Visible;
+                if (profile is null)
+                    return;
 
-            var columns = BuildHeatmapRows(profile);
-            RenderProfileRows(profile, columns);
+                var columns = BuildHeatmapRows(profile);
+                RenderProfileRows(profile, columns);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Error(ex, "SetProfile render failed; keeping previous content");
+            }
         }
 
         /// <summary>
@@ -199,81 +208,95 @@ namespace CodexQuota.Controls
             CodexProfileSnapshot profile,
             IReadOnlyList<IReadOnlyList<ProfileHeatmapLayout.DayCell>> columns)
         {
-            ProfileSection.Visibility = Visibility.Visible;
-
-            ProfileAsOfText.Text = profile.StatsAsOf is { } asOf
-                ? AppStrings.Format(profile.TodayUsageIsLocal ? "Ui.ProfileAsOfLive" : "Ui.ProfileAsOf", asOf)
-                : profile.TodayUsageIsLocal ? AppStrings.Get("Ui.LiveLocalSessions") : string.Empty;
-
-            var next = new List<UIElement>(columns.Count);
-
-            long maxTokens = 0;
-            foreach (var column in columns)
-                foreach (var cell in column)
-                    if (cell.Tokens > maxTokens)
-                        maxTokens = cell.Tokens;
-
-            var accent = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray);
-            var quiet = LookupBrush("ControlFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Transparent);
-            // Hover outline must read against every fill intensity, including full accent — so it
-            // runs counter to the theme (light line on light app theme), like the bars' threshold
-            // ticks.
-            var hoverOutline = new SolidColorBrush(
-                CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? Colors.White : Colors.Black);
-
-            foreach (var column in columns)
+            try
             {
-                var week = new StackPanel { Spacing = 3 };
-                foreach (var cell in column)
-                {
-                    var square = new Border
-                    {
-                        Width = 12,
-                        Height = 12,
-                        CornerRadius = new CornerRadius(2),
-                        Background = quiet,
-                        BorderThickness = new Thickness(0),
-                    };
+                ProfileSection.Visibility = Visibility.Visible;
 
-                    if (cell.Tokens > 0)
+                ProfileAsOfText.Text = profile.StatsAsOf is { } asOf
+                    ? AppStrings.Format(profile.TodayUsageIsLocal ? "Ui.ProfileAsOfLive" : "Ui.ProfileAsOf", asOf)
+                    : profile.TodayUsageIsLocal ? AppStrings.Get("Ui.LiveLocalSessions") : string.Empty;
+
+                var next = new List<UIElement>(columns.Count);
+
+                long maxTokens = 0;
+                foreach (var column in columns)
+                    foreach (var cell in column)
+                        if (cell.Tokens > maxTokens)
+                            maxTokens = cell.Tokens;
+
+                var accent = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray);
+                var quiet = LookupBrush("ControlFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Transparent);
+                // Hover outline must read against every fill intensity, including full accent — so it
+                // runs counter to the theme (light line on light app theme), like the bars' threshold
+                // ticks.
+                var hoverOutline = new SolidColorBrush(
+                    CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? Colors.White : Colors.Black);
+
+                foreach (var column in columns)
+                {
+                    var week = new StackPanel { Spacing = 3 };
+                    foreach (var cell in column)
                     {
-                        // Intensity scales with the day's share of the visible-window peak; the accent
-                        // keeps the hue theme-consistent while opacity carries the magnitude.
-                        double intensity = maxTokens > 0 ? (double)cell.Tokens / maxTokens : 0;
-                        square.Background = accent;
-                        square.Opacity = 0.25 + 0.75 * intensity;
+                        var square = new Border
+                        {
+                            Width = 12,
+                            Height = 12,
+                            CornerRadius = new CornerRadius(2),
+                            Background = quiet,
+                            BorderThickness = new Thickness(0),
+                        };
+
+                        if (cell.Tokens > 0)
+                        {
+                            // Intensity scales with the day's share of the visible-window peak; the accent
+                            // keeps the hue theme-consistent while opacity carries the magnitude.
+                            double intensity = maxTokens > 0 ? (double)cell.Tokens / maxTokens : 0;
+                            square.Background = accent;
+                            square.Opacity = 0.25 + 0.75 * intensity;
+                        }
+
+                        // Hover feedback: a 1px outline drawn inside the cell's own bounds (a scale
+                        // transform would overflow the 12px slot and clip at the grid edges), and the
+                        // exact day + tokens appear in the caption below — a 12px square cannot carry
+                        // that text itself. Use the full localized weekday and month because this is
+                        // the readable history detail, not the compact grid.
+                        square.PointerEntered += (_, _) =>
+                        {
+                            ActivityDetailText.Text = DetailLabel(cell);
+                            square.BorderBrush = hoverOutline;
+                            square.BorderThickness = new Thickness(1);
+                        };
+                        square.PointerExited += (_, _) =>
+                        {
+                            ActivityDetailText.Text = DefaultDetailLabel;
+                            square.BorderThickness = new Thickness(0);
+                        };
+                        week.Children.Add(square);
                     }
 
-                    // Hover feedback: a 1px outline drawn inside the cell's own bounds (a scale
-                    // transform would overflow the 12px slot and clip at the grid edges), and the
-                    // exact day + tokens appear in the caption below — a 12px square cannot carry
-                    // that text itself. Use the full localized weekday and month because this is
-                    // the readable history detail, not the compact grid.
-                    square.PointerEntered += (_, _) =>
-                    {
-                        ActivityDetailText.Text = DetailLabel(cell);
-                        square.BorderBrush = hoverOutline;
-                        square.BorderThickness = new Thickness(1);
-                    };
-                    square.PointerExited += (_, _) =>
-                    {
-                        ActivityDetailText.Text = DefaultDetailLabel;
-                        square.BorderThickness = new Thickness(0);
-                    };
-                    week.Children.Add(square);
+                    next.Add(week);
                 }
 
-                next.Add(week);
+                // The window always ends at today, so the last cell of the last column is today's bucket:
+                // show it as the resting caption (also serves as the label when nothing is hovered).
+                if (columns.Count == 0)
+                {
+                    DefaultDetailLabel = string.Empty;
+                    ActivityDetailText.Text = DefaultDetailLabel;
+                    SwapColumns(next);
+                    return;
+                }
+
+                var lastColumn = columns[^1];
+                DefaultDetailLabel = lastColumn.Count > 0 ? DetailLabel(lastColumn[^1]) : string.Empty;
+                ActivityDetailText.Text = DefaultDetailLabel;
+
+                SwapColumns(next);
             }
-
-            // The window always ends at today, so the last cell of the last column is today's bucket:
-            // show it as the resting caption (also serves as the label when nothing is hovered).
-            var lastColumn = columns[^1];
-            DefaultDetailLabel = lastColumn.Count > 0 ? DetailLabel(lastColumn[^1]) : string.Empty;
-            ActivityDetailText.Text = DefaultDetailLabel;
-
-            SwapColumns(next);
-
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Error(ex, "RenderProfileRows failed; keeping previous content");
+            }
         }
 
         private string DefaultDetailLabel = string.Empty;
@@ -411,7 +434,8 @@ namespace CodexQuota.Controls
             // The pace caption shares the urgency treatment of the percent it predicts; without the
             // color option it keeps the plain caption look.
             if (WidgetAppearanceSettings.ColorCodeText)
-                paceText.Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(pace.RemainingPercent)];
+                if (LookupBrush(QuotaDisplay.BrushKeyForRemaining(pace.RemainingPercent)) is { } paceBrush)
+                    paceText.Foreground = paceBrush;
             rows.Add(paceText);
         }
 
@@ -449,13 +473,15 @@ namespace CodexQuota.Controls
                 string resetText = ResetDateDisplay.IsImminent(resetAt, DateTimeOffset.UtcNow) && resetAt is { } resetWhen
                     ? AppStrings.Format("Ui.ResetsOn", ResetDateDisplay.FormatLocalTime(resetWhen))
                     : AppStrings.Format("Ui.ResetsIn", AppStrings.LocalizeCountdown(resetDescription));
-                head.Children.Add(new TextBlock
+                var resetBlock = new TextBlock
                 {
                     Text = resetText,
                     Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                    Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                     VerticalAlignment = VerticalAlignment.Center,
-                });
+                };
+                if (LookupBrush("TextFillColorSecondaryBrush") is { } resetBrush)
+                    resetBlock.Foreground = resetBrush;
+                head.Children.Add(resetBlock);
             }
             row.Children.Add(head);
 
@@ -470,7 +496,8 @@ namespace CodexQuota.Controls
             // threshold, red at or below the lower one. Above the upper threshold the text keeps its
             // default look exactly, so enabling the option never shifts a healthy percent's color.
             if (WidgetAppearanceSettings.ColorCodeText && remainingPercent <= WidgetAppearanceSettings.WarningUpperPercent)
-                valueBox.Foreground = (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(remainingPercent)];
+                if (LookupBrush(QuotaDisplay.BrushKeyForRemaining(remainingPercent)) is { } urgencyBrush)
+                    valueBox.Foreground = urgencyBrush;
             Grid.SetColumn(valueBox, 1);
             row.Children.Add(valueBox);
 
@@ -538,8 +565,9 @@ namespace CodexQuota.Controls
                     resetCredits.AvailableCount == 1 ? "Ui.ResetCreditCountOne" : "Ui.ResetCreditsCount",
                     resetCredits.AvailableCount.ToString("N0", CultureInfo.CurrentUICulture)),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             };
+            if (LookupBrush("TextFillColorSecondaryBrush") is { } creditsSecondary)
+                line.Foreground = creditsSecondary;
             if (resetCredits.EarliestExpiresAt is { } expires)
             {
                 // With a single credit there is nothing to disambiguate: the "oldest" qualifier

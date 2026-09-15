@@ -22,9 +22,15 @@ public static class StartupSettingsService
                 return;
             }
 
-            key.DeleteValue(LegacyRunValueName, throwOnMissingValue: false);
             if (key.GetValue(RunValueName) is null)
                 Apply(true);
+            // Delete the legacy entry only after the new entry is in place;
+            // a failed Apply must not orphan autostart.
+            if (key.GetValue(RunValueName) is string current
+                && current.Contains(StartupArgument, StringComparison.OrdinalIgnoreCase))
+            {
+                key.DeleteValue(LegacyRunValueName, throwOnMissingValue: false);
+            }
         }
         catch
         {

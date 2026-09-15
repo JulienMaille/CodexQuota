@@ -30,7 +30,18 @@ namespace CodexQuota.Diagnostics
                     var info = new FileInfo(LogPath);
                     if (info.Exists && info.Length > MaxLogBytes)
                     {
-                        File.Copy(LogPath, LogPath + ".old", overwrite: true);
+                        // Rotate via a per-user unique temp + atomic move so two
+                        // processes never truncate each other's log mid-copy.
+                        string tempOld = LogPath + "." + Environment.ProcessId + ".old";
+                        try
+                        {
+                            File.Copy(LogPath, tempOld, overwrite: true);
+                            File.Move(tempOld, LogPath + ".old", overwrite: true);
+                        }
+                        finally
+                        {
+                            try { if (File.Exists(tempOld)) File.Delete(tempOld); } catch { }
+                        }
                         File.Delete(LogPath);
                     }
 
