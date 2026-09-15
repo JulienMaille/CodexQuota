@@ -179,6 +179,7 @@ namespace CodexQuota.Taskbar
             }
             catch (Exception ex)
             {
+                Widgets.Remove(target.Handle);
                 try { widget?.Dispose(); } catch { }
                 Log.Error(ex, $"Failed to create taskbar widget for taskbar=0x{target.Handle.ToInt64():X}");
             }

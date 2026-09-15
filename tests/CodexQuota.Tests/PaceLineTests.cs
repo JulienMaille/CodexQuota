@@ -22,9 +22,12 @@ public class PaceLineTests
         var result = PaceLine.Compute(75, reset, WeekMinutes, Now);
 
         Assert.NotNull(result);
+        // Quota-remaining: 100-75 = 25% (drives the shared 50/20 urgency brush). The time-ratio
+        // (daysToCap/daysToReset ≈ 12.1%) is exposed separately as TimeToCapPercent.
         // Workday model (8h/day): 1.5 elapsed days = 2 workdays → pace = 75/2 = 37.5%/day;
         // daysToCap = 25/37.5 ≈ 0.67d; daysToReset = 5.5d → 0.67/5.5 ≈ 12.1%.
-        Assert.Equal(12.1, result!.RemainingPercent, precision: 1);
+        Assert.Equal(25, result!.RemainingPercent, precision: 1);
+        Assert.Equal(12.1, result.TimeToCapPercent, precision: 1);
         Assert.Contains("Pace ~38% quota/day", result.Label);
         Assert.Contains("cap", result.Label);
     }
@@ -37,7 +40,8 @@ public class PaceLineTests
         var result = PaceLine.Compute(20, reset, WeekMinutes, Now);
 
         Assert.NotNull(result);
-        Assert.Equal(100, result!.RemainingPercent, precision: 1);
+        Assert.Equal(80, result!.RemainingPercent, precision: 1);
+        Assert.Equal(100, result.TimeToCapPercent, precision: 1);
         Assert.Contains("3.3% quota/day", result.Label);
         Assert.Contains("resets before cap", result.Label);
     }
@@ -81,7 +85,8 @@ public class PaceLineTests
         var result = PaceLine.Compute(1, reset, WeekMinutes, Now);
 
         Assert.NotNull(result);
-        Assert.Equal(100, result!.RemainingPercent);
+        Assert.Equal(99, result!.RemainingPercent);
+        Assert.Equal(100, result.TimeToCapPercent);
         Assert.Contains("resets before cap", result.Label);
         Assert.DoesNotContain("→ cap", result.Label);
     }
@@ -131,6 +136,6 @@ public class PaceLineTests
 
         Assert.NotNull(result);
         Assert.Contains("14% quota/day", result!.Label);
-        Assert.Equal(100, result.RemainingPercent);
+        Assert.Equal(93, result.RemainingPercent);
     }
 }

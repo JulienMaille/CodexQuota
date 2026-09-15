@@ -18,14 +18,14 @@ Get-Process CodexQuota -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
 
 $before = if (Test-Path $Log) { (Get-Item $Log).Length } else { 0 }
-Start-Process -FilePath $exe
+$proc = Start-Process -FilePath $exe -PassThru
 Start-Sleep -Seconds $WaitSeconds
 
-$proc = Get-Process CodexQuota -ErrorAction SilentlyContinue
-if ($proc) {
-    "ALIVE pid=$($proc.Id) started=$($proc.StartTime)"
-} else {
+if ($proc.HasExited) {
     'DEAD - process exited'
+    exit 1
+} else {
+    "ALIVE pid=$($proc.Id) started=$($proc.StartTime)"
 }
 
 if (Test-Path $Log) {
@@ -41,10 +41,7 @@ if (Test-Path $Log) {
     }
     $lines | Select-Object -Last 15 | ForEach-Object { $_ }
 
-    if (-not $proc) {
-        exit 1
-    }
-    $errors = Select-String -Path $Log -Pattern 'ERROR|WARN|Exception' | Select-Object -Last 5
+    $errors = $lines | Select-String -Pattern 'ERROR|WARN|Exception' | Select-Object -Last 5
     if ($errors) {
         Write-Host '--- ERRORS ---'
         $errors | ForEach-Object { $_.Line }

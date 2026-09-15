@@ -411,13 +411,19 @@ namespace CodexQuota.Taskbar
         /// <summary>Routes a fetch result to the slot that owns its provider; no-op if it isn't shown.</summary>
         public void ApplyResult(UsageResult result, bool force = false)
         {
+            if (disposedValue)
+                return;
+            positionUpdateCancellation.Token.ThrowIfCancellationRequested();
             for (int i = 0; i < tiles.Length; i++)
             {
                 if (tileProviders[i] != result.Id)
                     continue;
 
-                tiles[i].Apply(result, force);
-                tiles[i].SetActiveToolVisible(true);
+                var tile = tiles[i];
+                if (tile is null || disposedValue)
+                    return;
+                tile.Apply(result, force);
+                tile.SetActiveToolVisible(true);
                 return;
             }
         }

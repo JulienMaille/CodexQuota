@@ -159,7 +159,7 @@ namespace CodexQuota
 
         [DllImport("ole32.dll")]
         private static extern uint CoWaitForMultipleObjects(
-            uint flags, uint timeoutMilliseconds, ulong handleCount, IntPtr[] handles, out uint handleIndex);
+            uint flags, uint timeoutMilliseconds, uint handleCount, IntPtr[] handles, out uint handleIndex);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr CreateEvent(IntPtr eventAttributes, bool manualReset, bool initialState, string? name);

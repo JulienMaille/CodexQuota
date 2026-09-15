@@ -93,6 +93,8 @@ public sealed class AutoSendService
     private readonly IAutoSendScheduler _scheduler;
 
     private AutoSendState _state = AutoSendState.Idle;
+    private bool _started;
+    private bool _fireClaimed;
     private AutoSendMode _mode;
     private DateTimeOffset _target;
     private DateTimeOffset? _baselineWeeklyResetAt;
@@ -133,9 +135,17 @@ public sealed class AutoSendService
             scheduler: new TimerAutoSendScheduler());
     }
 
-    /// <summary>Wires the coordinator feed and re-arms a persisted trigger after an app restart.</summary>
+    /// <summary>Wires the coordinator feed and re-arms a persisted trigger after an app restart.
+    /// Idempotent: repeat calls neither double-subscribe nor disturb in-memory state.</summary>
     public void Start()
     {
+        lock (_gate)
+        {
+            if (_started)
+                return;
+            _started = true;
+        }
+
         UsageCoordinator.Instance.StateChanged += OnStateChanged;
 
         // One-off diagnostic: with CODEXQUOTA_DUMP_CODEX_UI=1, dump the Codex/ChatGPT window's UI
@@ -145,8 +155,14 @@ public sealed class AutoSendService
 
         lock (_gate)
         {
-            if (!_store.Armed)
+            // P1/P5 torn-write guard: a crash between Target and Armed must never resurrect an
+            // arm with no target. Ignore Armed when Target==0.
+            if (!_store.Armed || _store.TargetResetAtUtcTicks == 0)
+            {
+                if (_store is { Armed: true })
+                    _store.Armed = false;
                 return;
+            }
 
             var target = new DateTimeOffset(_store.TargetResetAtUtcTicks, TimeSpan.Zero);
             if (target == DateTimeOffset.MinValue)
@@ -168,11 +184,34 @@ public sealed class AutoSendService
                 ? new DateTimeOffset(_store.BaselineWeeklyResetAtUtcTicks, TimeSpan.Zero)
                 : null;
             _state = AutoSendState.Armed;
+            _fireClaimed = false;
         }
 
         Log.Information($"Auto-send re-armed for session reset at {_target:O} (mode {_mode})");
         RescheduleTrigger();
         PublishStatus();
+    }
+
+    /// <summary>Detaches the coordinator feed and cancels any pending trigger. Idempotent.</summary>
+    public void Stop()
+    {
+        lock (_gate)
+        {
+            if (!_started)
+                return;
+            _started = false;
+        }
+
+        try
+        {
+            UsageCoordinator.Instance.StateChanged -= OnStateChanged;
+        }
+        catch
+        {
+            // Best effort: never throw out of teardown.
+        }
+
+        _scheduler.Cancel();
     }
 
     public AutoSendStatus Status
@@ -203,6 +242,16 @@ public sealed class AutoSendService
         if (snapshot?.HasPrimaryWindow != true || snapshot.Primary.ResetAt is not { } resetAt
             || resetAt <= _utcNow())
         {
+            // P1: a failed (re-)arm must not wipe a still-valid arm (target/store/timer stay put).
+            lock (_gate)
+            {
+                if (_state != AutoSendState.Idle)
+                {
+                    Log.Warning("Auto-send re-arm rejected: keeping the existing arm (no future session reset time in the current snapshot)");
+                    return;
+                }
+            }
+
             Log.Warning("Auto-send arm rejected: no future session reset time in the current snapshot");
             FinishLocked(outcome: AutoSendOutcome.ArmRejected, detail: "no session reset time available");
             return;
@@ -214,15 +263,18 @@ public sealed class AutoSendService
             _target = resetAt;
             _baselineWeeklyResetAt = snapshot.Secondary?.ResetAt;
             _confirmAttempts = 0;
+            _fireClaimed = false;
             _outcome = AutoSendOutcome.None;
             _outcomeAt = null;
             _outcomeDetail = null;
             _state = AutoSendState.Armed;
 
-            _store.Armed = true;
-            _store.Mode = mode;
+            // P1 torn-write order: Target/Baseline/Mode first, Armed last, so a crash can never
+            // leave Armed=true with a zero target (the store also ignores Armed when Target==0).
             _store.TargetResetAtUtcTicks = resetAt.UtcTicks;
             _store.BaselineWeeklyResetAtUtcTicks = _baselineWeeklyResetAt?.UtcTicks ?? 0;
+            _store.Mode = mode;
+            _store.Armed = true;
         }
 
         Log.Information($"Auto-send armed for session reset at {resetAt:O} (mode {mode})");
@@ -235,6 +287,7 @@ public sealed class AutoSendService
         lock (_gate)
         {
             _state = AutoSendState.Idle;
+            _fireClaimed = false; // revoke: a stale in-flight fire must stand down, never send
             _outcome = AutoSendOutcome.None;
             _outcomeAt = null;
             _outcomeDetail = null;
@@ -284,7 +337,14 @@ public sealed class AutoSendService
                 ChaseTarget(primaryResetAt);
                 return;
             }
+
+            // P0 double-send guard: CAS Armed->Confirming under the gate so only one poll
+            // wins the fire; a concurrent poll observes Confirming and stands down.
+            _state = AutoSendState.Confirming;
+            _fireClaimed = true;
         }
+
+        PublishStatus();
 
         // A poll that arrived after the armed reset time observed it: confirm immediately, no extra fetch.
         _ = ConfirmAndFireAsync(usage);
@@ -323,7 +383,10 @@ public sealed class AutoSendService
             if (_state != AutoSendState.Armed)
                 return;
 
+            // P0 double-send guard (timer path): the Armed->Confirming claim under the gate
+            // lets exactly one trigger own the fire; ConfirmAndFireAsync no-ops without it.
             _state = AutoSendState.Confirming;
+            _fireClaimed = true;
         }
 
         PublishStatus();
@@ -362,6 +425,7 @@ public sealed class AutoSendService
             }
 
             _state = AutoSendState.Armed; // next retry counts as a fresh trigger
+            _fireClaimed = false; // release the claim so the retry trigger can claim the fire
         }
 
         Log.Information("Auto-send: reset not observed yet, retrying shortly");
@@ -377,8 +441,12 @@ public sealed class AutoSendService
         bool skipForWeekly;
         lock (_gate)
         {
-            if (_state == AutoSendState.Idle)
+            // P0 double-send guard (winner check): only the path that CASed Armed->Confirming
+            // may fire. Concurrent polls stand down (state Confirming, claim consumed) and a
+            // Disarm/Finish revokes the claim, so a stale in-flight fire is a no-op.
+            if (_state == AutoSendState.Idle || !_fireClaimed)
                 return;
+            _fireClaimed = false;
 
             // Weekly veto: the weekly window observed now advanced past the armed baseline, meaning
             // it reset at (or during the run-up to) this session reset.

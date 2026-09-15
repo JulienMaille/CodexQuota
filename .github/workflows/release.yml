@@ -48,9 +48,11 @@ jobs:
             $tag = "v$((Get-Date -Format 'yyyy.MM.dd'))"
           }
 
-          $semver = $tag.TrimStart('v')
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw "Invalid tag '$tag': expected vX.Y.Z" }
+          $semver = $Matches[1]
           $parts = $semver.Split('.', [StringSplitOptions]::RemoveEmptyEntries)
           while ($parts.Count -lt 3) { $parts += '0' }
+          $semver = $parts -join '.'
 
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "semver=$semver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -66,14 +68,17 @@ jobs:
 
       - name: Build installers (x64 + arm64)
         id: build
+        env:
+          SEMVER: ${{ steps.version.outputs.semver }}
         run: |
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
 
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $semver = '${{ steps.version.outputs.semver }}'
+          $semver = $env:SEMVER
           $parts = $semver.Split('.', [StringSplitOptions]::RemoveEmptyEntries)
           while ($parts.Count -lt 3) { $parts += '0' }
+          $semver = $parts -join '.'
           $assemblyVersion = "$($parts[0]).$($parts[1]).$($parts[2]).0"
           # Manual dispatches fall back to a date-based semver (e.g. 2026.08.18-manual) whose patch
           # segment is not numeric; only tag runs carry a plain patch, so coerce non-numeric to 0.

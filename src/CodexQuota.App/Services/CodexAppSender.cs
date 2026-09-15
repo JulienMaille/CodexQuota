@@ -32,9 +32,11 @@ public sealed class CodexAppSender : ICodexAppSender
     // 'codex' CLI, whose console window is filtered out by the visible-window + title requirement).
     private static readonly string[] ProcessNameCandidates = { "ChatGPT", "codex" };
 
-    // Send-button locators, ranked: exact name match first, then automation-id/name substring.
+    // Send-button locators, ranked: exact name match first, then automation-id/name fragment.
+    // P1: the id fragment must not be the bare "send" substring (matches "sender", "sendgrid",
+    // "transaction-send", hidden/disabled buttons). Fragments are matched on token boundaries.
     private static readonly string[] SendButtonNameCandidates = { "Send", "Send message", "Submit" };
-    private static readonly string[] SendButtonIdFragments = { "send" };
+    private static readonly string[] SendButtonIdFragments = { "send-button", "sendbutton", "send_message", "sendmessage", "composer-send", "prompt-send" };
 
     private const int ButtonNameCap = 20;
     private const int ForegroundRealizeDelayMs = 800;
@@ -74,8 +76,9 @@ public sealed class CodexAppSender : ICodexAppSender
 
                 // Never send an empty prompt: if we can see edit/document inputs and all of them are
                 // blank, skip invoking from this window (but keep trying other windows that may hold
-                // the real conversation with typed content).
-                if (probe.InputsEmpty == true)
+                // the real conversation with typed content). Total-unknown (null: no readable
+                // composer content) blocks like empty — never sendable.
+                if (probe.InputsEmpty != false)
                     sawEmptyPrompt = true;
                 else
                     sawNonEmptyWindow = true;
@@ -88,15 +91,23 @@ public sealed class CodexAppSender : ICodexAppSender
                     bestButtonNames = probe.ButtonNames;
                 }
 
-                if (probe.InputsEmpty == true)
-                    continue; // empty input on this window: never invoke here, try the next window.
+                if (probe.InputsEmpty != false)
+                    continue; // empty or unreadable input on this window: never invoke here, try the next window.
 
                 if (probe.Button is not null)
                 {
+                    // P1: the first bad button must not veto the remaining windows — skip with a
+                    // diagnostic and keep probing. Only invoke enabled, on-screen buttons.
+                    if (!IsActionable(probe.Button, out string skipReason))
+                    {
+                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{SafeName(probe.Button)}' not actionable ({skipReason})");
+                        continue;
+                    }
+
                     if (probe.Button.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
                     {
-                        detail = $"send button '{SafeName(probe.Button)}' does not support Invoke";
-                        return SendPromptResult.Failed;
+                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{SafeName(probe.Button)}' does not support Invoke");
+                        continue;
                     }
 
                     invoke.Invoke();
@@ -186,8 +197,8 @@ public sealed class CodexAppSender : ICodexAppSender
                     continue;
 
                 // Same empty-prompt guard as a real send: report whether this window holds typed
-                // content, an empty input, or inputs we cannot read.
-                if (probe.InputsEmpty == true)
+                // content, an empty input, or inputs we cannot read (unknown blocks like empty).
+                if (probe.InputsEmpty != false)
                     sawEmptyPrompt = true;
                 else
                     sawNonEmptyWindow = true;
@@ -199,8 +210,8 @@ public sealed class CodexAppSender : ICodexAppSender
                     bestButtonNames = probe.ButtonNames;
                 }
 
-                if (probe.InputsEmpty == true)
-                    continue; // a real send would skip this window; keep probing the others.
+                if (probe.InputsEmpty != false)
+                    continue; // a real send would skip this window (empty or unreadable); keep probing the others.
 
                 if (probe.Button is not null)
                 {
@@ -507,9 +518,9 @@ public sealed class CodexAppSender : ICodexAppSender
 
             bool? inputsEmpty = null;
             try { inputsEmpty = AreAllInputsEmpty(root); }
-            catch { inputsEmpty = null; }
+            catch { inputsEmpty = true; } // P0: unreadable input state blocks, never sendable.
 
-            if (inputsEmpty == true)
+            if (inputsEmpty != false)
             {
                 result = SendPromptResult.EmptyPrompt;
                 detail = "chat input is empty";
@@ -524,11 +535,15 @@ public sealed class CodexAppSender : ICodexAppSender
             if (button is null)
                 return $"; collapsed-tree retry on '{title}': buttons={countText} [{names}]";
 
+            // P1 mirror of the fast path: skip non-actionable buttons with a diagnostic.
+            if (!IsActionable(button, out string retrySkip))
+                return $"; collapsed-tree retry on '{title}': send button '{SafeName(button)}' not actionable ({retrySkip}); buttons={countText} [{names}]";
+
             if (button.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
             {
-                result = SendPromptResult.Failed;
-                detail = $"send button '{SafeName(button)}' does not support Invoke";
-                return $"; collapsed-tree retry on '{title}': Invoke unsupported";
+                // P1: an Invoke-less button must not read as a hard failure — keep the
+                // ButtonNotFound aggregate semantics so other windows stay eligible.
+                return $"; collapsed-tree retry on '{title}': send button '{SafeName(button)}' does not support Invoke; buttons={countText} [{names}]";
             }
 
             invoke.Invoke();
@@ -604,8 +619,9 @@ public sealed class CodexAppSender : ICodexAppSender
             _automation.CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_DocumentControlTypeId));
         var inputs = root.FindAll(TreeScope.TreeScope_Descendants, condition);
         if (inputs is null || inputs.Length == 0)
-            return null; // unknown: no input controls found, let the send attempt proceed
+            return true; // P0: total failure (no readable composer input) blocks, never sendable.
 
+        bool sawComposer = false;
         bool sawInputWithContent = false;
         bool sawInputWithUnknownContent = false;
         bool sawInputWithEmptyContent = false;
@@ -613,13 +629,36 @@ public sealed class CodexAppSender : ICodexAppSender
         for (int i = 0; i < inputs.Length; i++)
         {
             var input = inputs.GetElement(i);
+
+            // P0: only editable, enabled, on-screen composer controls count. Read-only history
+            // Documents, disabled inputs and off-screen phantoms are ignored — their text is
+            // conversation history, not a typed prompt.
+            if (!IsComposerInput(input))
+                continue;
+            sawComposer = true;
+
             string? text = null;
 
             if (input.GetCurrentPattern(UIA_PatternIds.UIA_ValuePatternId) is IUIAutomationValuePattern value)
-                text = value.CurrentValue;
+            {
+                try
+                {
+                    if (value.CurrentIsReadOnly != 0)
+                        continue; // read-only: history, not the composer.
+                    text = value.CurrentValue;
+                }
+                catch { sawInputWithUnknownContent = true; continue; }
+            }
             else if (input.GetCurrentPattern(UIA_PatternIds.UIA_TextPatternId) is IUIAutomationTextPattern textPattern)
             {
-                try { text = textPattern.DocumentRange.GetText(-1); } catch { /* fall through */ }
+                try { text = textPattern.DocumentRange.GetText(-1); } catch { sawInputWithUnknownContent = true; continue; }
+            }
+            else
+            {
+                // An input whose content we simply cannot read (rich editors that expose neither
+                // Value nor Text) — default to blocking so we never risk an empty send.
+                sawInputWithUnknownContent = true;
+                continue;
             }
 
             if (text is null)
@@ -638,16 +677,70 @@ public sealed class CodexAppSender : ICodexAppSender
             }
         }
 
-        // Any visible/readable typed content means there is a prompt to send.
+        // No composer control found (only history/disabled/offscreen inputs): total-unknown blocks.
+        if (!sawComposer)
+            return true;
+
+        // Any typed composer content means there is a prompt to send.
         if (sawInputWithContent)
             return false;
 
-        // All readable inputs were empty, or some were empty and none had content.
-        if (!sawInputWithUnknownContent)
+        // P0: total-unknown (no readable composer content) blocks, never sendable.
+        if (sawInputWithUnknownContent && !sawInputWithEmptyContent)
             return true;
 
-        // At least one input was unreadable but none had readable content — conservative: block.
-        return sawInputWithEmptyContent ? true : null;
+        // All readable composer inputs were empty (or some empty + some unreadable): block.
+        return true;
+    }
+
+    /// <summary>P0 composer filter: an input only counts toward the empty-guard when it is enabled
+    /// and on-screen. Edit controls are composer candidates outright; Document controls additionally
+    /// need a composer hint (name/id mentioning prompt/composer/chatbox/input) so read-only history
+    /// Documents never masquerade as typed content. Unreadable state blocks (returns false).</summary>
+    private static bool IsComposerInput(IUIAutomationElement input)
+    {
+        try
+        {
+            if (input.CurrentIsEnabled == 0)
+                return false;
+        }
+        catch { return false; }
+
+        try
+        {
+            if (input.CurrentIsOffscreen != 0)
+                return false;
+        }
+        catch { return false; }
+
+        int controlType;
+        try { controlType = input.CurrentControlType; }
+        catch { return false; }
+
+        if (controlType == UIA_ControlTypeIds.UIA_EditControlTypeId)
+            return true;
+
+        if (controlType == UIA_ControlTypeIds.UIA_DocumentControlTypeId)
+        {
+            string name = SafeName(input);
+            string automationId = SafeAutomationId(input);
+            if (name.Contains("prompt", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("composer", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("chatbox", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("messagebox", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("input", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("ask ", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("type ", StringComparison.OrdinalIgnoreCase)
+                || automationId.Contains("prompt", StringComparison.OrdinalIgnoreCase)
+                || automationId.Contains("composer", StringComparison.OrdinalIgnoreCase)
+                || automationId.Contains("chatbox", StringComparison.OrdinalIgnoreCase)
+                || automationId.Contains("messagebox", StringComparison.OrdinalIgnoreCase)
+                || automationId.Contains("input", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
+
+        return false;
     }
 
     private IUIAutomationElement? FindSendButton(IUIAutomationElement root, out List<string> buttonNames, out int totalButtons)
@@ -675,6 +768,14 @@ public sealed class CodexAppSender : ICodexAppSender
 
         foreach (var exact in SendButtonNameCandidates)
         {
+            // P1: prefer the composer-subtree hint when several buttons share the Send name.
+            foreach (var (element, name, automationId) in candidates)
+            {
+                if (string.Equals(name, exact, StringComparison.OrdinalIgnoreCase)
+                    && IsComposerHinted(name, automationId))
+                    return element;
+            }
+
             foreach (var (element, name, _) in candidates)
             {
                 if (string.Equals(name, exact, StringComparison.OrdinalIgnoreCase))
@@ -684,6 +785,15 @@ public sealed class CodexAppSender : ICodexAppSender
 
         foreach (var fragment in SendButtonIdFragments)
         {
+            // P1: prefer the composer-subtree hint on the fragment pass too.
+            foreach (var (element, name, automationId) in candidates)
+            {
+                if ((automationId.Contains(fragment, StringComparison.OrdinalIgnoreCase)
+                        || name.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                    && IsComposerHinted(name, automationId))
+                    return element;
+            }
+
             foreach (var (element, name, automationId) in candidates)
             {
                 if (automationId.Contains(fragment, StringComparison.OrdinalIgnoreCase)
@@ -704,6 +814,56 @@ public sealed class CodexAppSender : ICodexAppSender
     {
         try { return element.CurrentAutomationId ?? string.Empty; } catch { return string.Empty; }
     }
+
+    /// <summary>P0/P1 guard: only enabled, on-screen buttons with a non-empty rect may be invoked.
+    /// Hidden/disabled/offscreen matches (background-tree phantoms, "sender"/"sendgrid" lookalikes)
+    /// are skipped with a diagnostic, never invoked and never veto the remaining windows.</summary>
+    private static bool IsActionable(IUIAutomationElement element, out string reason)
+    {
+        reason = string.Empty;
+        try
+        {
+            if (element.CurrentIsEnabled == 0)
+            {
+                reason = "disabled";
+                return false;
+            }
+        }
+        catch { reason = "IsEnabled unreadable"; return false; }
+
+        try
+        {
+            if (element.CurrentIsOffscreen != 0)
+            {
+                reason = "offscreen";
+                return false;
+            }
+        }
+        catch { reason = "IsOffscreen unreadable"; return false; }
+
+        try
+        {
+            var rect = element.CurrentBoundingRectangle;
+            if (rect.right <= rect.left || rect.bottom <= rect.top)
+            {
+                reason = "empty rect";
+                return false;
+            }
+        }
+        catch { reason = "rect unreadable"; return false; }
+
+        return true;
+    }
+
+    /// <summary>Composer hint: a send-button id/name tied to the composer ("composer", "prompt",
+    /// "chat") is preferred over chrome lookalikes when several buttons share the Send name.</summary>
+    private static bool IsComposerHinted(string name, string automationId)
+        => name.Contains("composer", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("prompt", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("chat", StringComparison.OrdinalIgnoreCase)
+        || automationId.Contains("composer", StringComparison.OrdinalIgnoreCase)
+        || automationId.Contains("prompt", StringComparison.OrdinalIgnoreCase)
+        || automationId.Contains("chat", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Logs the Codex window's control tree (type, name, automation id) to help pin the
     /// send-button locator. Only runs when <c>CODEXQUOTA_DUMP_CODEX_UI=1</c>.</summary>

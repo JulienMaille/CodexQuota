@@ -351,8 +351,10 @@ namespace CodexQuota
 
         private void OnCodexPresenceChanged(bool running)
         {
+            // Presence publishes arrive off the UI thread. If the queue is gone (shutdown),
+            // drop instead of touching UI inline (RPC_E_WRONG_THREAD).
             if (!DispatcherQueue.TryEnqueue(() => ApplyCodexPresence(running)))
-                ApplyCodexPresence(running);
+                CodexQuota.Diagnostics.Log.Warning("Flyout presence update dropped: DispatcherQueue unavailable.");
         }
 
         private void ApplyCodexPresence(bool running)

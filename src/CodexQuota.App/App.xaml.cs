@@ -26,9 +26,14 @@ namespace CodexQuota
             UnhandledException += (_, e) =>
             {
                 Log.Error(e.Exception, "Unhandled exception");
-                e.Handled = true;
+                // Let fatal, non-recoverable errors crash so they surface in crash
+                // reporting instead of limping on in a corrupted state.
+                e.Handled = !IsFatalException(e.Exception);
             };
         }
+
+        private static bool IsFatalException(Exception? ex)
+            => ex is OutOfMemoryException or StackOverflowException or AccessViolationException;
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
@@ -38,16 +43,25 @@ namespace CodexQuota
 
             // One-time migrations from the pre-rename WinCheck identity. Must run before the normal
             // startup/autostart paths so legacy data and the legacy Run entry don't linger or collide.
-            AppStorage.MigrateLegacyDataIfNeeded();
-            StartupSettingsService.MigrateLegacyStartupEntryIfNeeded();
+            // Each step is isolated: a failing migration must not prevent the taskbar init below,
+            // which would otherwise leave a zombie process with no widget.
+            try { AppStorage.MigrateLegacyDataIfNeeded(); }
+            catch (Exception ex) { Log.Warning(ex, "Legacy data migration failed"); }
+            try { StartupSettingsService.MigrateLegacyStartupEntryIfNeeded(); }
+            catch (Exception ex) { Log.Warning(ex, "Legacy startup migration failed"); }
 
             // Always-on autostart: (re)register the Run entry so the widget stays at logon.
-            StartupSettingsService.Apply(true);
+            try { StartupSettingsService.Apply(true); }
+            catch (Exception ex) { Log.Warning(ex, "Startup registration failed"); }
 
-            UsageCoordinator.Instance.Start();
-            Services.AutoSendService.Instance.Start();
-            Services.CodexPresence.Instance.Start();
-            ScheduleTaskbarInitialization();
+            try { UsageCoordinator.Instance.Start(); }
+            catch (Exception ex) { Log.Warning(ex, "Usage coordinator start failed"); }
+            try { Services.AutoSendService.Instance.Start(); }
+            catch (Exception ex) { Log.Warning(ex, "Auto-send start failed"); }
+            try { Services.CodexPresence.Instance.Start(); }
+            catch (Exception ex) { Log.Warning(ex, "Codex presence start failed"); }
+            try { ScheduleTaskbarInitialization(); }
+            catch (Exception ex) { Log.Warning(ex, "Taskbar initialization scheduling failed"); }
         }
 
         /// <summary>Handles an activation that a second process redirected to this instance.
@@ -117,18 +131,32 @@ namespace CodexQuota
             }
         }
 
-        private void StopTaskbarInitializationTimer()
-        {
-            _taskbarInitializationTimer?.Dispose();
-            _taskbarInitializationTimer = null;
-            Interlocked.Exchange(ref _taskbarInitializationQueued, 0);
-        }
-
         public static void Quit()
         {
             IsQuitting = true;
-            Quitting?.Invoke();
+            try
+            {
+                if (Current is App app)
+                    app.StopTaskbarInitializationTimer();
+            }
+            catch { }
+            var handlers = Quitting?.GetInvocationList();
+            if (handlers is not null)
+            {
+                foreach (var handler in handlers)
+                {
+                    try { ((Action)handler)(); }
+                    catch (Exception ex) { Log.Warning(ex, "Quitting handler failed"); }
+                }
+            }
             Current.Exit();
+        }
+
+        private void StopTaskbarInitializationTimer()
+        {
+            try { _taskbarInitializationTimer?.Dispose(); } catch { }
+            _taskbarInitializationTimer = null;
+            Interlocked.Exchange(ref _taskbarInitializationQueued, 0);
         }
 
         internal static bool ShouldRetryTaskbarInitialization(int completedAttempts)

@@ -44,8 +44,10 @@ public sealed partial class AutoSendSection : UserControl
 
     private void OnStatusChanged(AutoSendStatus status)
     {
+        // Status publishes arrive off the UI thread. If the queue is gone (shutdown),
+        // drop instead of touching UI inline (RPC_E_WRONG_THREAD).
         if (!DispatcherQueue.TryEnqueue(() => ApplyStatus(status)))
-            ApplyStatus(status);
+            Log.Warning("AutoSendSection status update dropped: DispatcherQueue unavailable.");
     }
 
     private void ApplyStatus(AutoSendStatus status)

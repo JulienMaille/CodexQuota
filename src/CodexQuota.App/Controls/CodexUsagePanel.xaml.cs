@@ -213,8 +213,8 @@ namespace CodexQuota.Controls
                     if (cell.Tokens > maxTokens)
                         maxTokens = cell.Tokens;
 
-            var accent = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
-            var quiet = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"];
+            var accent = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray);
+            var quiet = LookupBrush("ControlFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Transparent);
             // Hover outline must read against every fill intensity, including full accent — so it
             // runs counter to the theme (light line on light app theme), like the bars' threshold
             // ticks.
@@ -563,7 +563,7 @@ namespace CodexQuota.Controls
 
             var track = new Border
             {
-                Background = (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"],
+                Background = LookupBrush("ControlStrokeColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
                 CornerRadius = new CornerRadius(2),
             };
             Grid.SetColumnSpan(track, 2);
@@ -576,7 +576,7 @@ namespace CodexQuota.Controls
                 : "AccentFillColorDefaultBrush";
             host.Children.Add(new Border
             {
-                Background = (Brush)Application.Current.Resources[fillKey],
+                Background = LookupBrush(fillKey) ?? LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
                 CornerRadius = new CornerRadius(2),
             });
 
@@ -694,6 +694,17 @@ namespace CodexQuota.Controls
         private void ApplyLinkBrush()
         {
             TokenActivityLink.Foreground = ActualTheme == ElementTheme.Dark ? LogoBrushDark : LogoBrushLight;
+        }
+
+        private static Brush? LookupBrush(string key)
+        {
+            try
+            {
+                if (Application.Current?.Resources.TryGetValue(key, out object? value) == true && value is Brush brush)
+                    return brush;
+            }
+            catch { /* theme lookup is best effort */ }
+            return null;
         }
     }
 }

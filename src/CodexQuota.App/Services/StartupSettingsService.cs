@@ -59,7 +59,11 @@ public static class StartupSettingsService
             if (!enabled)
             {
                 key.DeleteValue(RunValueName, throwOnMissingValue: false);
-                key.DeleteValue(LegacyRunValueName, throwOnMissingValue: false);
+                if (key.GetValue(LegacyRunValueName) is string legacy
+                    && legacy.Contains(StartupArgument, StringComparison.OrdinalIgnoreCase))
+                {
+                    key.DeleteValue(LegacyRunValueName, throwOnMissingValue: false);
+                }
                 return;
             }
 

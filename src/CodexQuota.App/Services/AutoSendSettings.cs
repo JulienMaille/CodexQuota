@@ -37,7 +37,22 @@ public sealed class AutoSendSettings : IAutoSendStore
 
     public bool Armed
     {
-        get => ReadInt(ArmedValueName, 0) != 0;
+        get
+        {
+            // P1/P5 torn-write guard: a crash between the Target and Armed writes must never
+            // resurrect an arm with no target. Armed with Target==0 reads as disarmed.
+            try
+            {
+                if (ReadInt(ArmedValueName, 0) == 0)
+                    return false;
+                return ReadLong(TargetResetAtValueName, 0) != 0;
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Warning(ex, "Auto-send store read failed (Armed)");
+                return false;
+            }
+        }
         set => WriteInt(ArmedValueName, value ? 1 : 0);
     }
 
@@ -87,9 +102,12 @@ public sealed class AutoSendSettings : IAutoSendStore
             using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
             key?.SetValue(name, value, RegistryValueKind.DWord);
         }
-        catch
+        catch (Exception ex)
         {
-            // Settings are best-effort; the service keeps running with in-memory state.
+            // Registry writes are best-effort (locked hive, no profile): surface the failure so a
+            // crash-restart that loses the arm is diagnosable. The service keeps running with
+            // in-memory state only — there is no cross-process in-memory fallback for the store.
+            Diagnostics.Log.Warning(ex, $"Auto-send store write failed ({name})");
         }
     }
 
@@ -113,9 +131,12 @@ public sealed class AutoSendSettings : IAutoSendStore
             using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
             key?.SetValue(name, value, RegistryValueKind.QWord);
         }
-        catch
+        catch (Exception ex)
         {
-            // Settings are best-effort; the service keeps running with in-memory state.
+            // Registry writes are best-effort (locked hive, no profile): surface the failure so a
+            // crash-restart that loses the arm is diagnosable. The service keeps running with
+            // in-memory state only — there is no cross-process in-memory fallback for the store.
+            Diagnostics.Log.Warning(ex, $"Auto-send store write failed ({name})");
         }
     }
 }

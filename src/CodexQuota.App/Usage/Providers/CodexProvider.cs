@@ -592,7 +592,7 @@ namespace CodexQuota.Usage.Providers
             try
             {
                 var parts = accessToken.Split('.');
-                if (parts.Length != 2) return true; // malformed — let the caller surface the real error
+                if (parts.Length != 3) return true; // malformed — let the caller surface the real error
 
                 var payload = parts[1];
                 // Base64url → Base64 padding
@@ -655,40 +655,47 @@ namespace CodexQuota.Usage.Providers
             }
         }
 
+        private static readonly object AuthFileLock = new();
+
         private static void SaveRefreshedTokens(string authPath, string newAccessToken, string newRefreshToken, string? accountId)
         {
             try
             {
-                var json = JsonDocument.Parse(File.ReadAllText(authPath));
-                var root = json.RootElement;
-                using var doc = new System.IO.MemoryStream();
-                using (var w = new Utf8JsonWriter(doc, new JsonWriterOptions { Indented = true }))
+                lock (AuthFileLock)
                 {
-                    w.WriteStartObject();
-                    foreach (var prop in root.EnumerateObject())
+                    using var json = JsonDocument.Parse(File.ReadAllText(authPath));
+                    var root = json.RootElement;
+                    using var doc = new System.IO.MemoryStream();
+                    using (var w = new Utf8JsonWriter(doc, new JsonWriterOptions { Indented = true }))
                     {
-                        if (prop.Name == "last_refresh") continue; // rewritten below
-                        if (prop.Name == "tokens" && prop.Value.ValueKind == JsonValueKind.Object)
+                        w.WriteStartObject();
+                        foreach (var prop in root.EnumerateObject())
                         {
-                            w.WritePropertyName("tokens");
-                            w.WriteStartObject();
-                            foreach (var t in prop.Value.EnumerateObject())
+                            if (prop.Name == "last_refresh") continue; // rewritten below
+                            if (prop.Name == "tokens" && prop.Value.ValueKind == JsonValueKind.Object)
                             {
-                                if (t.Name == "access_token") { w.WriteString("access_token", newAccessToken); continue; }
-                                if (t.Name == "refresh_token") { w.WriteString("refresh_token", newRefreshToken); continue; }
-                                t.Value.WriteTo(w);
+                                w.WritePropertyName("tokens");
+                                w.WriteStartObject();
+                                foreach (var t in prop.Value.EnumerateObject())
+                                {
+                                    if (t.Name == "access_token") { w.WriteString("access_token", newAccessToken); continue; }
+                                    if (t.Name == "refresh_token") { w.WriteString("refresh_token", newRefreshToken); continue; }
+                                    t.Value.WriteTo(w);
+                                }
+                                w.WriteEndObject();
                             }
-                            w.WriteEndObject();
+                            else
+                            {
+                                prop.Value.WriteTo(w);
+                            }
                         }
-                        else
-                        {
-                            prop.Value.WriteTo(w);
-                        }
+                        w.WriteString("last_refresh", DateTimeOffset.UtcNow.ToString("o"));
+                        w.WriteEndObject();
                     }
-                    w.WriteString("last_refresh", DateTimeOffset.UtcNow.ToString("o"));
-                    w.WriteEndObject();
+                    var temp = authPath + ".tmp";
+                    File.WriteAllText(temp, System.Text.Encoding.UTF8.GetString(doc.ToArray()));
+                    File.Move(temp, authPath, overwrite: true);
                 }
-                File.WriteAllText(authPath, System.Text.Encoding.UTF8.GetString(doc.ToArray()));
             }
             catch
             {

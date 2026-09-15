@@ -88,7 +88,14 @@ namespace CodexQuota
                 // fetches would double-pump the API. The user-driven refresh path (force: true) and
                 // the taskbar-sync alias stay unguarded so they always run.
                 if (Interlocked.Exchange(ref _pollInFlight, 1) != 0)
+                {
+                    ScheduleNextPoll(AdaptiveRefreshPolicy.NextDelay(
+                        _flyoutOpen,
+                        _lastFlyoutOpenAtUtc,
+                        DateTimeOffset.UtcNow,
+                        IsCodexProcessRunning()));
                     return;
+                }
                 try
                 {
                     await FetchAndPublishAsync(force: false).ConfigureAwait(false);

@@ -4,7 +4,10 @@ using System.Globalization;
 namespace CodexQuota;
 
 /// <summary>Result of a pace projection. The English label is retained for culture-independent
-/// tests and diagnostics; the UI uses the semantic fields to render the selected language.</summary>
+/// tests and diagnostics; the UI uses the semantic fields to render the selected language.
+/// <see cref="RemainingPercent"/> is quota-remaining (100-used), compatible with
+/// <c>QuotaDisplay.BrushKeyForRemaining</c>; <see cref="TimeToCapPercent"/> carries the old
+/// time-ratio (daysToCap/daysToReset) for callers that need the urgency slope.</summary>
 public sealed record PaceLineResult(
     string Label,
     double RemainingPercent,
@@ -13,7 +16,8 @@ public sealed record PaceLineResult(
     bool WillExhaustBeforeReset,
     double DaysToCap,
     DateTimeOffset ResetAt,
-    DateTimeOffset? CapAt);
+    DateTimeOffset? CapAt,
+    double TimeToCapPercent = 100);
 
 /// <summary>
 /// Projects the weekly quota's exhaustion date from the rate window's used-percent trajectory and
@@ -77,10 +81,14 @@ public static class PaceLine
         double daysToReset = (resetAt - now).TotalDays;
         bool willExhaustBeforeReset = !burned && materiallyAhead && daysToCap < daysToReset;
         DateTimeOffset? capAt = willExhaustBeforeReset ? now.AddDays(daysToCap) : null;
-        double remaining = burned
+        // P1: RemainingPercent is quota-remaining (100-used) so the shared 50/20
+        // BrushKeyForRemaining thresholds color quota, not a time ratio. The time-ratio
+        // (daysToCap/daysToReset) is exposed separately as TimeToCapPercent.
+        double remaining = Math.Clamp(100 - used, 0, 100);
+        double timeToCapPercent = burned
             ? 0
-            : willExhaustBeforeReset
-                ? Math.Min(100, daysToCap / Math.Max(1, daysToReset) * 100)
+            : willExhaustBeforeReset && daysToReset > 0
+                ? Math.Clamp(daysToCap / daysToReset * 100, 0, 100)
                 : 100;
 
         string rateLabel = FormatQuotaRate(burnPerDay);
@@ -100,7 +108,8 @@ public static class PaceLine
             willExhaustBeforeReset,
             daysToCap,
             resetAt,
-            capAt);
+            capAt,
+            timeToCapPercent);
     }
 
     private static string DayName(DateTimeOffset when)

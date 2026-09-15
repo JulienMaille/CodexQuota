@@ -106,15 +106,24 @@ namespace CodexQuota.Usage
         }
 
         private static bool HasResetWindow(StoredUsage usage, DateTimeOffset now)
-            => new[] { usage.Primary, usage.Secondary, usage.ModelSpecific, usage.Monthly }
+        {
+            if (usage.Cost?.ResetsAt is { } costReset && now >= costReset)
+                return true;
+            if (usage.ResetCredits?.Credits?.Any(c => c?.ExpiresAt is { } expiresAt && now >= expiresAt) == true)
+                return true;
+            return new[] { usage.Primary, usage.Secondary, usage.ModelSpecific, usage.Monthly }
                 .Concat(usage.ExtraRateWindows?.Select(w => w.Window) ?? Enumerable.Empty<StoredWindow?>())
                 .Any(w => w?.ResetAt is { } resetAt && now >= resetAt);
+        }
 
         private static UsageSnapshot ToSnapshot(StoredUsage stored)
         {
-            var snapshot = new UsageSnapshot(ToWindow(stored.Primary) ?? new RateWindow(0))
+            var primary = ToWindow(stored.Primary);
+            var snapshot = new UsageSnapshot(primary ?? new RateWindow(0))
             {
-                HasPrimaryWindow = stored.HasPrimaryWindow,
+                // A null Primary carries no window data: never keep HasPrimaryWindow true with the
+                // RateWindow(0) placeholder, which would render a fake "Session 0%" bar.
+                HasPrimaryWindow = stored.HasPrimaryWindow && primary != null,
                 Secondary = ToWindow(stored.Secondary),
                 ModelSpecific = ToWindow(stored.ModelSpecific),
                 Monthly = ToWindow(stored.Monthly),

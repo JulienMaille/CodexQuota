@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using global::Interop.UIAutomationClient;
@@ -18,6 +19,9 @@ namespace CodexQuota.Taskbar
         private readonly IntPtr hwndReBar;
         private Timer? _timer;
         private IUIAutomation? _automation;
+        private readonly object _sync = new();
+        private bool _disposed;
+        private int _pollActive;
         private RECT? _lastWidgetsButtonRect;
         private DateTime _lastWidgetsButtonRectAt = DateTime.MinValue;
         private static readonly TimeSpan WidgetsButtonRectMaxAge = TimeSpan.FromSeconds(30);
@@ -45,26 +49,44 @@ namespace CodexQuota.Taskbar
 
         private void Poll()
         {
+            if (Interlocked.Exchange(ref _pollActive, 1) != 0)
+                return;
             try
             {
                 bool isWidgets = SystemInfos.IsTaskBarWidgetsEnabled();
                 bool isCentered = SystemInfos.IsTaskBarCentered();
                 bool isHidden = IsTaskbarHidden();
 
-                var reason = TaskbarChangeReason.Other;
-                if (isWidgets != widgetsButtonEnabled) { reason = TaskbarChangeReason.WidgetsButton; widgetsButtonEnabled = isWidgets; }
-                else if (isCentered != taskbarCentered) { reason = TaskbarChangeReason.Alignment; taskbarCentered = isCentered; }
-                else if (isHidden != taskbarHidden) { reason = TaskbarChangeReason.Visibility; taskbarHidden = isHidden; }
-
-                TaskbarChangedNotificationCompleted?.Invoke(this, new TaskbarChangedEventArgs
+                TaskbarChangedEventArgs? args = null;
+                lock (_sync)
                 {
-                    Reason = reason,
-                    IsTaskbarHidden = taskbarHidden,
-                    IsTaskbarCentered = taskbarCentered,
-                    IsTaskbarWidgetsEnabled = widgetsButtonEnabled,
-                });
+                    if (_disposed)
+                        return;
+                    var reason = TaskbarChangeReason.Other;
+                    if (isWidgets != widgetsButtonEnabled) { reason = TaskbarChangeReason.WidgetsButton; widgetsButtonEnabled = isWidgets; }
+                    else if (isCentered != taskbarCentered) { reason = TaskbarChangeReason.Alignment; taskbarCentered = isCentered; }
+                    else if (isHidden != taskbarHidden) { reason = TaskbarChangeReason.Visibility; taskbarHidden = isHidden; }
+                    else
+                    {
+                        return;
+                    }
+
+                    args = new TaskbarChangedEventArgs
+                    {
+                        Reason = reason,
+                        IsTaskbarHidden = taskbarHidden,
+                        IsTaskbarCentered = taskbarCentered,
+                        IsTaskbarWidgetsEnabled = widgetsButtonEnabled,
+                    };
+                }
+
+                TaskbarChangedNotificationCompleted?.Invoke(this, args);
             }
             catch { /* best-effort */ }
+            finally
+            {
+                Interlocked.Exchange(ref _pollActive, 0);
+            }
         }
 
         /// <summary>
@@ -79,45 +101,68 @@ namespace CodexQuota.Taskbar
             if (hwndTaskbar == IntPtr.Zero || !SystemInfos.IsTaskBarWidgetsEnabled())
                 return null;
 
-            try
+            lock (_sync)
             {
-                _automation ??= new CUIAutomation();
-                var root = _automation.ElementFromHandle(hwndTaskbar);
-                if (root is null)
-                    return CachedWidgetsButtonRect();
+                if (_disposed)
+                    return CachedWidgetsButtonRectLocked();
 
-                var condition = _automation.CreatePropertyCondition(
-                    UIA_PropertyIds.UIA_AutomationIdPropertyId, WidgetsButtonAutomationId);
-                var button = root.FindFirst(TreeScope.TreeScope_Descendants, condition);
-                if (button is null)
-                    return CachedWidgetsButtonRect();
+                IUIAutomationElement? root = null;
+                IUIAutomationCondition? condition = null;
+                IUIAutomationElement? button = null;
+                try
+                {
+                    _automation ??= new CUIAutomation();
+                    root = _automation.ElementFromHandle(hwndTaskbar);
+                    if (root is null)
+                        return CachedWidgetsButtonRectLocked();
 
-                var r = button.CurrentBoundingRectangle;
-                if (r.right <= r.left || r.bottom <= r.top)
-                    return CachedWidgetsButtonRect();
+                    condition = _automation.CreatePropertyCondition(
+                        UIA_PropertyIds.UIA_AutomationIdPropertyId, WidgetsButtonAutomationId);
+                    button = root.FindFirst(TreeScope.TreeScope_Descendants, condition);
+                    if (button is null)
+                        return CachedWidgetsButtonRectLocked();
 
-                var rect = new RECT { left = r.left, top = r.top, right = r.right, bottom = r.bottom };
-                // The Widgets flyout hosts a "WidgetsButton" element of its own; that one floats above the
-                // bar and its x-span covers the whole left half, which would wipe out every left-hand gap.
-                if (!IsOnTaskbarBand(rect))
-                    return CachedWidgetsButtonRect();
+                    var r = button.CurrentBoundingRectangle;
+                    if (r.right <= r.left || r.bottom <= r.top)
+                        return CachedWidgetsButtonRectLocked();
 
-                _lastWidgetsButtonRect = rect;
-                _lastWidgetsButtonRectAt = DateTime.UtcNow;
-                return rect;
-            }
-            catch (Exception ex)
-            {
-                // Cross-process UIA reads fail intermittently (shell busy, tree rebuilding). Returning null
-                // here makes the caller anchor the widget at x=0 — right on top of the weather/Widgets pill.
-                // Fall back to the last known-good rect so a transient failure never causes the overlap (#17).
-                Diagnostics.Log.Debug($"widgets-button UIA lookup failed: {ex.Message}");
-                _automation = null;
-                return CachedWidgetsButtonRect();
+                    var rect = new RECT { left = r.left, top = r.top, right = r.right, bottom = r.bottom };
+                    // The Widgets flyout hosts a "WidgetsButton" element of its own; that one floats above the
+                    // bar and its x-span covers the whole left half, which would wipe out every left-hand gap.
+                    if (!IsOnTaskbarBand(rect))
+                        return CachedWidgetsButtonRectLocked();
+
+                    _lastWidgetsButtonRect = rect;
+                    _lastWidgetsButtonRectAt = DateTime.UtcNow;
+                    return rect;
+                }
+                catch (Exception ex)
+                {
+                    // Cross-process UIA reads fail intermittently (shell busy, tree rebuilding). Returning null
+                    // here makes the caller anchor the widget at x=0 — right on top of the weather/Widgets pill.
+                    // Fall back to the last known-good rect so a transient failure never causes the overlap (#17).
+                    Diagnostics.Log.Debug($"widgets-button UIA lookup failed: {ex.Message}");
+                    ReleaseAutomationLocked();
+                    return CachedWidgetsButtonRectLocked();
+                }
+                finally
+                {
+                    ReleaseComObject(button);
+                    ReleaseComObject(condition);
+                    ReleaseComObject(root);
+                }
             }
         }
 
         private RECT? CachedWidgetsButtonRect()
+        {
+            lock (_sync)
+            {
+                return CachedWidgetsButtonRectLocked();
+            }
+        }
+
+        private RECT? CachedWidgetsButtonRectLocked()
             => _lastWidgetsButtonRect is { } rect && DateTime.UtcNow - _lastWidgetsButtonRectAt < WidgetsButtonRectMaxAge
                 ? rect
                 : null;
@@ -136,48 +181,74 @@ namespace CodexQuota.Taskbar
             if (hwndTaskbar == IntPtr.Zero)
                 return CachedTaskButtonRects();
 
-            try
+            lock (_sync)
             {
-                _automation ??= new CUIAutomation();
-                var root = _automation.ElementFromHandle(hwndTaskbar);
-                if (root is null)
-                    return CachedTaskButtonRects();
+                if (_disposed)
+                    return CachedTaskButtonRectsLocked();
 
-                var condition = _automation.CreatePropertyCondition(
-                    UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId);
-                var buttons = root.FindAll(TreeScope.TreeScope_Descendants, condition);
-                if (buttons is null)
-                    return CachedTaskButtonRects();
-
-                var rects = new List<RECT>(buttons.Length);
-                for (int i = 0; i < buttons.Length; i++)
+                IUIAutomationElement? root = null;
+                IUIAutomationCondition? condition = null;
+                IUIAutomationElementArray? buttons = null;
+                try
                 {
-                    var r = buttons.GetElement(i).CurrentBoundingRectangle;
-                    if (r.right <= r.left || r.bottom <= r.top)
-                        continue;
+                    _automation ??= new CUIAutomation();
+                    root = _automation.ElementFromHandle(hwndTaskbar);
+                    if (root is null)
+                        return CachedTaskButtonRectsLocked();
 
-                    var rect = new RECT { left = r.left, top = r.top, right = r.right, bottom = r.bottom };
-                    // The taskbar UIA tree also carries buttons that are not ON the bar: the Widgets/weather
-                    // flyout, the hidden-icons overflow popup, jump lists and tooltips all hang off the same
-                    // root. Their bounds sit above the taskbar but span wide horizontal ranges, so treating
-                    // them as obstacles erases whole zones and the widget can no longer be dragged into them
-                    // (issue #21 follow-up: drag moved right but never left while the Widgets flyout tree was
-                    // present). Keep only elements that actually live in the taskbar band.
-                    if (!IsOnTaskbarBand(rect))
-                        continue;
+                    condition = _automation.CreatePropertyCondition(
+                        UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId);
+                    buttons = root.FindAll(TreeScope.TreeScope_Descendants, condition);
+                    if (buttons is not IUIAutomationElementArray array)
+                        return CachedTaskButtonRectsLocked();
 
-                    rects.Add(rect);
+                    var rects = new List<RECT>(array.Length);
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        IUIAutomationElement? element = null;
+                        try
+                        {
+                            element = array.GetElement(i);
+                            if (element is not IUIAutomationElement el)
+                                continue;
+                            var r = el.CurrentBoundingRectangle;
+                            if (r.right <= r.left || r.bottom <= r.top)
+                                continue;
+
+                            var rect = new RECT { left = r.left, top = r.top, right = r.right, bottom = r.bottom };
+                            // The taskbar UIA tree also carries buttons that are not ON the bar: the Widgets/weather
+                            // flyout, the hidden-icons overflow popup, jump lists and tooltips all hang off the same
+                            // root. Their bounds sit above the taskbar but span wide horizontal ranges, so treating
+                            // them as obstacles erases whole zones and the widget can no longer be dragged into them
+                            // (issue #21 follow-up: drag moved right but never left while the Widgets flyout tree was
+                            // present). Keep only elements that actually live in the taskbar band.
+                            if (!IsOnTaskbarBand(rect))
+                                continue;
+
+                            rects.Add(rect);
+                        }
+                        finally
+                        {
+                            ReleaseComObject(element);
+                        }
+                    }
+
+                    _lastTaskButtonRects = rects;
+                    _lastTaskButtonRectsAt = DateTime.UtcNow;
+                    return rects;
                 }
-
-                _lastTaskButtonRects = rects;
-                _lastTaskButtonRectsAt = DateTime.UtcNow;
-                return rects;
-            }
-            catch (Exception ex)
-            {
-                Diagnostics.Log.Debug($"taskbar-button UIA scan failed: {ex.Message}");
-                _automation = null;
-                return CachedTaskButtonRects();
+                catch (Exception ex)
+                {
+                    Diagnostics.Log.Debug($"taskbar-button UIA scan failed: {ex.Message}");
+                    ReleaseAutomationLocked();
+                    return CachedTaskButtonRectsLocked();
+                }
+                finally
+                {
+                    ReleaseComObject(buttons);
+                    ReleaseComObject(condition);
+                    ReleaseComObject(root);
+                }
             }
         }
 
@@ -189,12 +260,20 @@ namespace CodexQuota.Taskbar
         private bool IsOnTaskbarBand(RECT rect)
         {
             if (!User32.GetWindowRect(hwndTaskbar, out var bar) || bar.bottom <= bar.top)
-                return true;
+                return false;
 
             return TaskBarWidget.IsInVerticalBand(rect, bar.top, bar.bottom);
         }
 
         private List<RECT>? CachedTaskButtonRects()
+        {
+            lock (_sync)
+            {
+                return CachedTaskButtonRectsLocked();
+            }
+        }
+
+        private List<RECT>? CachedTaskButtonRectsLocked()
             => _lastTaskButtonRects is { } rects && DateTime.UtcNow - _lastTaskButtonRectsAt < TaskButtonRectsMaxAge
                 ? rects
                 : null;
@@ -211,13 +290,42 @@ namespace CodexQuota.Taskbar
 
         public void Dispose()
         {
-            _timer?.Dispose();
-            _timer = null;
+            Timer? timer;
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
+                _disposed = true;
+                timer = _timer;
+                _timer = null;
+            }
+
+            try { timer?.Dispose(); } catch { }
+            lock (_sync)
+            {
+                ReleaseAutomationLocked();
+            }
+        }
+
+        private void ReleaseAutomationLocked()
+        {
             if (_automation is not null)
             {
-                try { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(_automation); } catch { }
+                try { Marshal.FinalReleaseComObject(_automation); } catch { }
                 _automation = null;
             }
+        }
+
+        private static void ReleaseComObject(object? comObject)
+        {
+            if (comObject is null)
+                return;
+            try
+            {
+                if (Marshal.IsComObject(comObject))
+                    Marshal.FinalReleaseComObject(comObject);
+            }
+            catch { }
         }
     }
 

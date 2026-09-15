@@ -131,8 +131,10 @@ namespace CodexQuota.Controls
 
         private void OnAutoSendStatusChanged(Services.AutoSendStatus status)
         {
+            // Status publishes arrive off the UI thread. If the queue is gone (shutdown),
+            // drop instead of touching UI inline (RPC_E_WRONG_THREAD).
             if (!DispatcherQueue.TryEnqueue(() => ApplyAutoSendStatus(status)))
-                ApplyAutoSendStatus(status);
+                Diagnostics.Log.Warning("WidgetSummary auto-send update dropped: DispatcherQueue unavailable.");
         }
 
         private void ApplyAutoSendStatus(Services.AutoSendStatus status)
@@ -143,8 +145,10 @@ namespace CodexQuota.Controls
 
         private void OnCodexPresenceChanged(bool running)
         {
+            // Presence publishes arrive off the UI thread. If the queue is gone (shutdown),
+            // drop instead of touching UI inline (RPC_E_WRONG_THREAD).
             if (!DispatcherQueue.TryEnqueue(() => ApplyCodexPresence(running)))
-                ApplyCodexPresence(running);
+                Diagnostics.Log.Warning("WidgetSummary presence update dropped: DispatcherQueue unavailable.");
         }
 
         private void ApplyCodexPresence(bool running)
@@ -225,7 +229,7 @@ namespace CodexQuota.Controls
                     && row.Source.HasBar
                     && row.Source.Percent <= WidgetAppearanceSettings.WarningUpperPercent;
                 row.Value.Foreground = urgent
-                    ? (Brush)Application.Current.Resources[QuotaDisplay.BrushKeyForRemaining(row.Source.Percent)]
+                    ? LookupBrush(QuotaDisplay.BrushKeyForRemaining(row.Source.Percent)) ?? Foreground
                     : Foreground;
                 foreach (var marker in row.Markers)
                     marker.Background = _markerBrush;
@@ -298,8 +302,11 @@ namespace CodexQuota.Controls
             if (_rows.Count == 0)
             {
                 SetActiveToolVisible(false);
+                DesiredLogicalWidth = 0;
+                DesiredHostWidthChanged?.Invoke(DesiredLogicalWidth);
                 return;
             }
+            SetActiveToolVisible(true);
             RenderRows();
             SetBars();
 
@@ -571,7 +578,7 @@ namespace CodexQuota.Controls
                 <= 120 => "AccentFillColorSecondaryBrush",
                 _ => "TextFillColorSecondaryBrush",
             };
-            return (Brush)Application.Current.Resources[key];
+            return LookupBrush(key) ?? new SolidColorBrush(Colors.Gray);
         }
 
         private static int? TryParseResetMinutes(string resetDescription)
@@ -839,7 +846,7 @@ namespace CodexQuota.Controls
             var track = new Border { CornerRadius = new CornerRadius(2), Opacity = 0.28 };
             var bar = new Border
             {
-                Background = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"],
+                Background = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
                 CornerRadius = new CornerRadius(2),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Width = 0,
@@ -1024,7 +1031,7 @@ namespace CodexQuota.Controls
         /// </summary>
         private static Brush ResetBrushFor(WidgetUsageRow row)
             => ResetDateDisplay.IsImminent(row.ResetAt, DateTimeOffset.UtcNow)
-                ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+                ? LookupBrush("AccentFillColorDefaultBrush") ?? ResetBrush(row.ResetDescription ?? string.Empty)
                 : ResetBrush(row.ResetDescription ?? string.Empty);
 
         /// <summary>
@@ -1069,8 +1076,19 @@ namespace CodexQuota.Controls
             string key = WidgetAppearanceSettings.ColorCodeText
                 ? GetRemainingBrushResourceKey(remainingPercent)
                 : "AccentFillColorDefaultBrush";
-            border.Background = (Brush)Application.Current.Resources[key];
+            border.Background = LookupBrush(key) ?? border.Background;
             border.Opacity = 1;
+        }
+
+        private static Brush? LookupBrush(string key)
+        {
+            try
+            {
+                if (Application.Current?.Resources.TryGetValue(key, out object? value) == true && value is Brush brush)
+                    return brush;
+            }
+            catch { /* theme lookup is best effort */ }
+            return null;
         }
 
         private static string Abbrev(string name)

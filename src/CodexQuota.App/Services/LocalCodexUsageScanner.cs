@@ -191,10 +191,24 @@ internal static class LocalCodexUsageScanner
                             CultureInfo.InvariantCulture,
                             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                             out var timestamp)
-                        || DateOnly.FromDateTime(timestamp.UtcDateTime) != targetDay
                         || !payload.TryGetProperty("info", out var info)
                         || info.ValueKind != JsonValueKind.Object)
                     {
+                        continue;
+                    }
+
+                    var eventDay = DateOnly.FromDateTime(timestamp.UtcDateTime);
+                    if (eventDay != targetDay)
+                    {
+                        // Midnight-spanning session: track the cumulative baseline from pre-target-day
+                        // events so the first target-day delta excludes the previous day's usage.
+                        if (eventDay < targetDay
+                            && info.TryGetProperty("total_token_usage", out var baseline)
+                            && TryUsageTotal(baseline, out long baselineTokens)
+                            && baselineTokens > previousCumulative)
+                        {
+                            previousCumulative = baselineTokens;
+                        }
                         continue;
                     }
 

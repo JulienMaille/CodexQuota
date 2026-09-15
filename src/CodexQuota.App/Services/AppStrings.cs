@@ -198,7 +198,17 @@ internal static partial class AppStrings
     }
 
     public static string Format(string key, params object?[] args)
-        => string.Format(CultureInfo.CurrentUICulture, Get(key), args);
+        {
+            string template = Get(key);
+            try
+            {
+                return string.Format(CultureInfo.CurrentUICulture, template, args);
+            }
+            catch (FormatException)
+            {
+                return template;
+            }
+        }
 
     public static string FormatPace(PaceLineResult pace)
     {

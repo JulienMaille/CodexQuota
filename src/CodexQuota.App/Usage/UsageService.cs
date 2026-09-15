@@ -111,8 +111,9 @@ namespace CodexQuota.Usage
             {
                 if (ShouldReuseLastSuccessfulResult(pe.Kind) && TryGetLastSuccessfulLiveResult(id, out var lastSuccess))
                 {
-                    Store(id, lastSuccess, FetchCachePolicy.TtlForFailure(pe.Kind));
-                    return lastSuccess;
+                    var stale = lastSuccess.AsStale(pe.Message, pe.Kind);
+                    Store(id, stale, FetchCachePolicy.TtlForFailure(pe.Kind));
+                    return stale;
                 }
 
                 var result = UsageResult.Failure(id, pe.Message, provider, pe.Kind);
@@ -382,14 +383,17 @@ namespace CodexQuota.Usage
         /// <summary>Marks a snapshot as restored-from-disk (see <see cref="IsStale"/>).</summary>
         public UsageResult AsStale() => WithStale(true);
 
-        private UsageResult WithStale(bool isStale)
+        /// <summary>Marks a live fallback snapshot as stale, attaching the refresh error context.</summary>
+        public UsageResult AsStale(string? error, ProviderErrorKind? kind) => WithStale(true, error, kind);
+
+        private UsageResult WithStale(bool isStale, string? error = null, ProviderErrorKind? kind = null)
             => new()
             {
                 Id = Id,
                 Provider = Provider,
                 Fetch = Fetch,
-                Error = Error,
-                ErrorKind = ErrorKind,
+                Error = error ?? Error,
+                ErrorKind = kind ?? ErrorKind,
                 IsPending = IsPending,
                 IsStale = isStale,
             };
