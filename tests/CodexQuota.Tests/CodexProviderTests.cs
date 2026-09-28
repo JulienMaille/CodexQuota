@@ -334,6 +334,72 @@ public class CodexProviderTests
         Assert.Empty(profile.TopInvocations);
     }
 
+    [Fact]
+    public void BuildResult_HasCreditsWithoutBalance_ReturnsNullCostInsteadOfZero()
+    {
+        // Flaky API: has_credits:true but the balance field omitted and no header. Must be
+        // unknown (row hidden), never a fabricated Cost(0) that flickers 0/real every refresh.
+        var json = """
+            {
+              "plan_type": "plus",
+              "rate_limit": {
+                "primary_window": {
+                  "used_percent": 35,
+                  "limit_window_seconds": 18000,
+                  "reset_at": 1893456000
+                },
+                "secondary_window": {
+                  "used_percent": 71,
+                  "limit_window_seconds": 604800,
+                  "reset_at": 1893542400
+                }
+              },
+              "credits": { "has_credits": true }
+            }
+            """;
+        using var doc = JsonDocument.Parse(json);
+
+        var result = CodexProvider.BuildResult(doc.RootElement);
+
+        Assert.Null(result.Usage.Cost);
+    }
+
+    [Fact]
+    public void BuildResult_ExplicitZeroBalance_ReturnsZeroCost()
+    {
+        // A truly numeric 0 balance must still surface as Cost 0.
+        var json = """
+            {
+              "plan_type": "plus",
+              "rate_limit": {
+                "primary_window": {
+                  "used_percent": 35,
+                  "limit_window_seconds": 18000,
+                  "reset_at": 1893456000
+                }
+              },
+              "credits": { "has_credits": true, "balance": 0 }
+            }
+            """;
+        using var doc = JsonDocument.Parse(json);
+
+        var result = CodexProvider.BuildResult(doc.RootElement);
+
+        Assert.NotNull(result.Usage.Cost);
+        Assert.Equal(0, result.Usage.Cost!.Amount);
+    }
+
+    [Fact]
+    public void BuildResult_HeaderBalance_SurfacesCost()
+    {
+        using var doc = JsonDocument.Parse(CodexUsageJson("plus"));
+
+        var result = CodexProvider.BuildResult(doc.RootElement, headerCredits: 12.5);
+
+        Assert.NotNull(result.Usage.Cost);
+        Assert.Equal(12.5, result.Usage.Cost!.Amount);
+    }
+
     private static string CodexUsageJson(string planType, bool includeSpark = false)
     {
         var additional = includeSpark

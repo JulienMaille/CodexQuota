@@ -226,8 +226,7 @@ namespace CodexQuota.Taskbar
             var coordinator = UsageCoordinator.Instance;
             var providers = coordinator.WidgetDisplayProviders;
 
-            widget.SetDisplayProviders(providers, coordinator.ActiveProvider);
-            widget.SetVisible(true);
+            PushToWidget(widget, providers);
 
             bool needsFetch = false;
             foreach (var provider in providers)
@@ -248,6 +247,13 @@ namespace CodexQuota.Taskbar
 
             if (needsFetch)
                 CoalesceSyncFetch(coordinator);
+        }
+
+        /// <summary>Pushes the display set and visibility into a widget.</summary>
+        private static void PushToWidget(TaskBarWidget widget, IReadOnlyList<ProviderId> providers)
+        {
+            widget.SetDisplayProviders(providers, UsageCoordinator.Instance.ActiveProvider);
+            widget.SetVisible(true);
         }
 
         // A batch create (one EnsureWidgets pass, N taskbars) must not fire N forced fetches. One
@@ -298,8 +304,7 @@ namespace CodexQuota.Taskbar
             FlyoutWindow? flyout = null;
             try
             {
-                flyout = _flyout ?? new FlyoutWindow();
-                _flyout = flyout;
+                flyout = GetOrCreateFlyout();
                 flyout.ToggleAbove(widget.Handle);
             }
             catch (Exception ex)
@@ -310,6 +315,14 @@ namespace CodexQuota.Taskbar
             }
         }
 
+        /// <summary>Returns the shared flyout, creating it on first use.</summary>
+        private static FlyoutWindow GetOrCreateFlyout()
+        {
+            var flyout = _flyout ?? new FlyoutWindow();
+            _flyout = flyout;
+            return flyout;
+        }
+
         private static void PrewarmFlyout()
         {
             _dispatcher?.TryEnqueue(DispatcherQueuePriority.Low, () =>
@@ -317,8 +330,7 @@ namespace CodexQuota.Taskbar
                 FlyoutWindow? flyout = null;
                 try
                 {
-                    flyout = _flyout ?? new FlyoutWindow();
-                    _flyout = flyout;
+                    flyout = GetOrCreateFlyout();
                     flyout.Prewarm();
                 }
                 catch (Exception ex)
@@ -347,8 +359,7 @@ namespace CodexQuota.Taskbar
                 if (!widget.IsAlive)
                     continue;
 
-                widget.SetDisplayProviders(providers, coordinator.ActiveProvider);
-                widget.SetVisible(true);
+                PushToWidget(widget, providers);
                 if (!isDisplayed)
                     continue;
 

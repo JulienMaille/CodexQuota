@@ -53,13 +53,7 @@ namespace CodexQuota.Usage.Providers
             {
                 using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
 
-                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                    throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
-                if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                    throw new ProviderException(ProviderErrorKind.RateLimited, "Codex API rate limit reached.");
-
-                if (!response.IsSuccessStatusCode)
-                    throw new ProviderException(ProviderErrorKind.Other, $"Codex API returned {(int)response.StatusCode}");
+                EnsureSuccessStatus(response, "Codex API rate limit reached.", $"Codex API returned {(int)response.StatusCode}");
 
                 double? headerPrimary = TryHeaderF64(response, "x-codex-primary-used-percent");
                 double? headerSecondary = TryHeaderF64(response, "x-codex-secondary-used-percent");
@@ -171,13 +165,7 @@ namespace CodexQuota.Usage.Providers
             {
                 using var response = await Http.SendAsync(request, timeout.Token).ConfigureAwait(false);
 
-                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                    throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
-                if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                    throw new ProviderException(ProviderErrorKind.RateLimited, "Codex profile API rate limit reached.");
-
-                if (!response.IsSuccessStatusCode)
-                    throw new ProviderException(ProviderErrorKind.Other, $"Codex profile API returned {(int)response.StatusCode}");
+                EnsureSuccessStatus(response, "Codex profile API rate limit reached.", $"Codex profile API returned {(int)response.StatusCode}");
 
                 using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
@@ -215,12 +203,12 @@ namespace CodexQuota.Usage.Providers
                 ? statsEl
                 : default;
 
-            long lifetime = TryI64(stats, "lifetime_tokens") ?? TryI64(json, "lifetime_tokens") ?? 0;
-            long? peak = TryI64(stats, "peak_daily_tokens") ?? TryI64(json, "peak_daily_tokens");
-            long? longestTurn = TryI64(stats, "longest_running_turn_sec") ?? TryI64(json, "longest_running_turn_sec");
-            int streak = TryInt32(stats, "current_streak_days") ?? TryInt32(json, "current_streak_days") ?? 0;
-            int longestStreak = TryInt32(stats, "longest_streak_days") ?? TryInt32(json, "longest_streak_days") ?? 0;
-            long threads = TryI64(stats, "total_threads") ?? TryI64(json, "total_threads") ?? 0;
+            long lifetime = GetI64(stats, json, "lifetime_tokens") ?? 0;
+            long? peak = GetI64(stats, json, "peak_daily_tokens");
+            long? longestTurn = GetI64(stats, json, "longest_running_turn_sec");
+            int streak = GetI32(stats, json, "current_streak_days") ?? 0;
+            int longestStreak = GetI32(stats, json, "longest_streak_days") ?? 0;
+            long threads = GetI64(stats, json, "total_threads") ?? 0;
             double? fastMode = TryF64(stats, "fast_mode_usage_percentage");
             string? reasoningEffort = TryString(stats, "most_used_reasoning_effort");
             double? reasoningPercent = TryF64(stats, "most_used_reasoning_effort_percentage");
@@ -231,13 +219,9 @@ namespace CodexQuota.Usage.Providers
             // instead of daily_usage_buckets (openai/codex#25479); newer responses nest under stats.
             // Both feeds also appeared at the top level at times, so try every nesting for each name
             // before falling back to the legacy last_buckets shapes (symmetric with the weekly chain).
-            var daily = TryBuckets(stats, "daily_usage_buckets")
-                ?? TryBuckets(json, "daily_usage_buckets")
-                ?? TryBuckets(stats, "last_buckets")
-                ?? TryBuckets(json, "last_buckets")
+            var daily = FirstBucket(stats, json, "daily_usage_buckets", "last_buckets")
                 ?? Array.Empty<ProfileUsageBucket>();
-            var weekly = TryBuckets(stats, "weekly_usage_buckets")
-                ?? TryBuckets(json, "weekly_usage_buckets")
+            var weekly = FirstBucket(stats, json, "weekly_usage_buckets")
                 ?? Array.Empty<ProfileUsageBucket>();
 
             var invocations = new List<ProfileTopInvocation>();
@@ -284,11 +268,27 @@ namespace CodexQuota.Usage.Providers
             };
         }
 
+        private static IReadOnlyList<ProfileUsageBucket>? FirstBucket(JsonElement stats, JsonElement json, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                var buckets = TryBuckets(stats, name) ?? TryBuckets(json, name);
+                if (buckets != null)
+                    return buckets;
+            }
+
+            return null;
+        }
+
+        private static long? GetI64(JsonElement stats, JsonElement json, string name)
+            => TryI64(stats, name) ?? TryI64(json, name);
+
+        private static int? GetI32(JsonElement stats, JsonElement json, string name)
+            => TryInt32(stats, name) ?? TryInt32(json, name);
+
         private static IReadOnlyList<ProfileUsageBucket>? TryBuckets(JsonElement parent, string name)
         {
-            if (parent.ValueKind != JsonValueKind.Object
-                || !parent.TryGetProperty(name, out var el)
-                || el.ValueKind != JsonValueKind.Array)
+            if (!TryGetMember(parent, name, out var el) || el.ValueKind != JsonValueKind.Array)
             {
                 return null;
             }
@@ -310,23 +310,68 @@ namespace CodexQuota.Usage.Providers
             return buckets;
         }
 
+        private static bool TryGetMember(JsonElement parent, string name, out JsonElement el)
+        {
+            if (parent.ValueKind != JsonValueKind.Object)
+            {
+                el = default;
+                return false;
+            }
+
+            return parent.TryGetProperty(name, out el);
+        }
+
         private static string? TryString(JsonElement parent, string name)
-            => parent.ValueKind == JsonValueKind.Object
-                && parent.TryGetProperty(name, out var el)
-                && el.ValueKind == JsonValueKind.String
+            => TryGetMember(parent, name, out var el) && el.ValueKind == JsonValueKind.String
                 ? el.GetString()
                 : null;
 
         private static long? TryI64(JsonElement parent, string name)
         {
-            if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var el))
+            if (!TryGetMember(parent, name, out var el))
                 return null;
+            return ParseI64Element(el);
+        }
+
+        private static long? ParseI64Element(JsonElement el)
+        {
             if (el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out long value))
                 return value;
             if (el.ValueKind == JsonValueKind.String
                 && long.TryParse(el.GetString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value))
                 return value;
             return null;
+        }
+
+        private static int? ParseI32Element(JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out int value))
+                return value;
+            if (el.ValueKind == JsonValueKind.String
+                && int.TryParse(el.GetString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value))
+                return value;
+            return null;
+        }
+
+        private static double? ParseF64Element(JsonElement el)
+        {
+            return el.ValueKind switch
+            {
+                JsonValueKind.Number => el.GetDouble(),
+                JsonValueKind.String when double.TryParse(el.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) => v,
+                _ => null,
+            };
+        }
+
+        private static void EnsureSuccessStatus(HttpResponseMessage response, string rateLimitMessage, string otherMessage)
+        {
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new ProviderException(ProviderErrorKind.AuthRequired, AuthExpiredMessage);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                throw new ProviderException(ProviderErrorKind.RateLimited, rateLimitMessage);
+
+            if (!response.IsSuccessStatusCode)
+                throw new ProviderException(ProviderErrorKind.Other, otherMessage);
         }
 
         private static HttpRequestMessage CreateRequest(Credentials creds, string path)
@@ -446,7 +491,10 @@ namespace CodexQuota.Usage.Providers
                     return null;
 
                 bool hasCredits = credits.TryGetProperty("has_credits", out var hc) && hc.ValueKind == JsonValueKind.True;
-                balance ??= TryF64(credits, "balance") ?? (hasCredits ? 0 : null);
+                // Never fabricate a zero: has_credits:true with no balance means the field was
+                // omitted (unknown → row hidden), not a true zero. Only a numeric balance —
+                // including an explicit 0 — produces a CostSnapshot.
+                balance ??= TryF64(credits, "balance");
                 limit = TryF64(credits, "limit") ?? TryF64(credits, "total_granted") ?? TryF64(credits, "granted") ?? TryF64(credits, "monthly_limit");
 
                 if (!hasCredits && balance is null)
@@ -509,26 +557,19 @@ namespace CodexQuota.Usage.Providers
 
         private static double? TryF64(JsonElement parent, string name)
         {
-            if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var el)) return null;
-            return el.ValueKind switch
-            {
-                JsonValueKind.Number => el.GetDouble(),
-                JsonValueKind.String when double.TryParse(el.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) => v,
-                _ => null,
-            };
+            if (!TryGetMember(parent, name, out var el)) return null;
+            return ParseF64Element(el);
         }
 
         private static int? TryInt32(JsonElement parent, string name)
         {
-            if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var el)) return null;
-            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out int value)) return value;
-            if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value)) return value;
-            return null;
+            if (!TryGetMember(parent, name, out var el)) return null;
+            return ParseI32Element(el);
         }
 
         private static DateTimeOffset? TryDateTimeOffset(JsonElement parent, string name)
         {
-            if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.String)
+            if (!TryGetMember(parent, name, out var el) || el.ValueKind != JsonValueKind.String)
                 return null;
 
             return DateTimeOffset.TryParse(
@@ -590,37 +631,53 @@ namespace CodexQuota.Usage.Providers
             {
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
+                if (TryReadOAuthTokens(root, out string? access, out string? refresh, out string? acct))
                 {
-                    string? access = tokens.TryGetProperty("access_token", out var at) && at.ValueKind == JsonValueKind.String ? at.GetString() : null;
-                    string? refresh = tokens.TryGetProperty("refresh_token", out var rt) && rt.ValueKind == JsonValueKind.String ? rt.GetString() : null;
-                    string? acct = tokens.TryGetProperty("account_id", out var ac) && ac.ValueKind == JsonValueKind.String ? ac.GetString() : null;
-
-                    if (!string.IsNullOrEmpty(access))
+                    // Auto-refresh when the access token is expired or expiring within 5 minutes.
+                    if (IsTokenExpired(access!) && !string.IsNullOrEmpty(refresh))
                     {
-                        // Auto-refresh when the access token is expired or expiring within 5 minutes.
-                        if (IsTokenExpired(access) && !string.IsNullOrEmpty(refresh))
+                        var refreshed = await RefreshAccessTokenAsync(refresh!, ct).ConfigureAwait(false);
+                        if (refreshed != null)
                         {
-                            var refreshed = await RefreshAccessTokenAsync(refresh, ct).ConfigureAwait(false);
-                            if (refreshed != null)
-                            {
-                                SaveRefreshedTokens(authPath, refreshed.Value.AccessToken, refreshed.Value.RefreshToken, acct);
-                                return new Credentials(refreshed.Value.AccessToken, acct);
-                            }
+                            SaveRefreshedTokens(authPath, refreshed.Value.AccessToken, refreshed.Value.RefreshToken, acct);
+                            return new Credentials(refreshed.Value.AccessToken, acct);
                         }
-
-                        return new Credentials(access, acct);
                     }
+
+                    return new Credentials(access!, acct);
                 }
 
-                if (root.TryGetProperty("OPENAI_API_KEY", out var key) && key.ValueKind == JsonValueKind.String)
-                {
-                    var k = key.GetString()?.Trim();
-                    if (!string.IsNullOrEmpty(k)) return new Credentials(k!, null);
-                }
+                if (TryReadApiKey(root, out string? apiKey))
+                    return new Credentials(apiKey!, null);
 
                 throw new ProviderException(ProviderErrorKind.Parse, "Codex auth.json contains no usable token.");
             }
+        }
+
+        private static bool TryReadOAuthTokens(JsonElement root, out string? access, out string? refresh, out string? accountId)
+        {
+            access = refresh = accountId = null;
+            if (!TryGetMember(root, "tokens", out var tokens) || tokens.ValueKind != JsonValueKind.Object)
+                return false;
+
+            access = TryString(tokens, "access_token");
+            refresh = TryString(tokens, "refresh_token");
+            accountId = TryString(tokens, "account_id");
+            return !string.IsNullOrEmpty(access);
+        }
+
+        private static bool TryReadApiKey(JsonElement root, out string? apiKey)
+        {
+            apiKey = null;
+            if (!TryGetMember(root, "OPENAI_API_KEY", out var key) || key.ValueKind != JsonValueKind.String)
+                return false;
+
+            var trimmed = key.GetString()?.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+                return false;
+
+            apiKey = trimmed;
+            return true;
         }
 
         /// <summary>Returns true when the JWT exp claim is within 5 minutes of now or already past.</summary>
@@ -713,15 +770,7 @@ namespace CodexQuota.Usage.Providers
                             if (prop.Name == "last_refresh") continue; // rewritten below
                             if (prop.Name == "tokens" && prop.Value.ValueKind == JsonValueKind.Object)
                             {
-                                w.WritePropertyName("tokens");
-                                w.WriteStartObject();
-                                foreach (var t in prop.Value.EnumerateObject())
-                                {
-                                    if (t.Name == "access_token") { w.WriteString("access_token", newAccessToken); continue; }
-                                    if (t.Name == "refresh_token") { w.WriteString("refresh_token", newRefreshToken); continue; }
-                                    t.Value.WriteTo(w);
-                                }
-                                w.WriteEndObject();
+                                CopyTokensObject(w, prop.Value, newAccessToken, newRefreshToken);
                             }
                             else
                             {
@@ -741,6 +790,19 @@ namespace CodexQuota.Usage.Providers
                 // Best-effort: if we can't write back, the next poll will re-read the stale file
                 // and surface the normal auth error.
             }
+        }
+
+        private static void CopyTokensObject(Utf8JsonWriter w, JsonElement tokens, string newAccessToken, string newRefreshToken)
+        {
+            w.WritePropertyName("tokens");
+            w.WriteStartObject();
+            foreach (var t in tokens.EnumerateObject())
+            {
+                if (t.Name == "access_token") { w.WriteString("access_token", newAccessToken); continue; }
+                if (t.Name == "refresh_token") { w.WriteString("refresh_token", newRefreshToken); continue; }
+                t.Value.WriteTo(w);
+            }
+            w.WriteEndObject();
         }
 
         private static string GetAuthPath()

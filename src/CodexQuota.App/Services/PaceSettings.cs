@@ -1,5 +1,4 @@
 using System;
-using Microsoft.Win32;
 
 namespace CodexQuota;
 
@@ -31,54 +30,14 @@ public static class PaceSettings
     }
 
     private static int ReadInt(string name, int defaultValue)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            // P2: accept DWORD/QWORD/REG_SZ instead of silently defaulting on a type mismatch
-            // (e.g. a QWORD written by another version).
-            return CoerceInt(key?.GetValue(name), defaultValue);
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.ReadInt(KeyPath, name, defaultValue);
 
     internal static int CoerceInt(object? raw, int defaultValue)
-    {
-        try
-        {
-            return raw switch
-            {
-                null => defaultValue,
-                int i => i,
-                long l => l >= int.MinValue && l <= int.MaxValue ? (int)l : defaultValue,
-                string s when int.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed) => parsed,
-                string s when long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long parsedLong)
-                    && parsedLong >= int.MinValue && parsedLong <= int.MaxValue => (int)parsedLong,
-                IConvertible convertible => Convert.ToInt32(convertible, System.Globalization.CultureInfo.InvariantCulture),
-                _ => defaultValue,
-            };
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.CoerceInt(raw, defaultValue);
 
     private static bool WriteInt(string name, int value)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-            key?.SetValue(name, value, RegistryValueKind.DWord);
-            return true;
-        }
-        catch
-        {
-            // Settings are best-effort; the default remains effective when the registry is unavailable.
-            return false;
-        }
+        // Settings are best-effort; the default remains effective when the registry is unavailable.
+        return RegistrySettings.WriteInt(KeyPath, name, value);
     }
 }

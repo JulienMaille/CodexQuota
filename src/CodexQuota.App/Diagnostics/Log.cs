@@ -27,23 +27,7 @@ namespace CodexQuota.Diagnostics
             {
                 lock (FileLock)
                 {
-                    var info = new FileInfo(LogPath);
-                    if (info.Exists && info.Length > MaxLogBytes)
-                    {
-                        // Rotate via a per-user unique temp + atomic move so two
-                        // processes never truncate each other's log mid-copy.
-                        string tempOld = LogPath + "." + Environment.ProcessId + ".old";
-                        try
-                        {
-                            File.Copy(LogPath, tempOld, overwrite: true);
-                            File.Move(tempOld, LogPath + ".old", overwrite: true);
-                        }
-                        finally
-                        {
-                            try { if (File.Exists(tempOld)) File.Delete(tempOld); } catch { }
-                        }
-                        File.Delete(LogPath);
-                    }
+                    RotateIfNeededLocked();
 
                     File.AppendAllText(LogPath, line + Environment.NewLine);
                 }
@@ -51,6 +35,28 @@ namespace CodexQuota.Diagnostics
             catch
             {
             }
+        }
+
+        /// <summary>Rotates the log when over budget. Caller must hold <see cref="FileLock"/>.</summary>
+        private static void RotateIfNeededLocked()
+        {
+            var info = new FileInfo(LogPath);
+            if (!info.Exists || info.Length <= MaxLogBytes)
+                return;
+
+            // Rotate via a per-user unique temp + atomic move so two
+            // processes never truncate each other's log mid-copy.
+            string tempOld = LogPath + "." + Environment.ProcessId + ".old";
+            try
+            {
+                File.Copy(LogPath, tempOld, overwrite: true);
+                File.Move(tempOld, LogPath + ".old", overwrite: true);
+            }
+            finally
+            {
+                try { if (File.Exists(tempOld)) File.Delete(tempOld); } catch { }
+            }
+            File.Delete(LogPath);
         }
     }
 }

@@ -303,29 +303,32 @@ namespace CodexQuota.Usage
             // (today merged minus what the server already counted) into LifetimeTokens, and
             // keep PeakDailyTokens at least as large as the merged today value.
             long localDelta = Math.Max(0, mergedTodayTokens - serverTodayTokens);
-            return new CodexProfileSnapshot
-            {
-                Username = Username,
-                DisplayName = DisplayName,
-                LifetimeTokens = LifetimeTokens + localDelta,
-                PeakDailyTokens = Math.Max(PeakDailyTokens, mergedTodayTokens),
-                LongestRunningTurnSec = LongestRunningTurnSec,
-                CurrentStreakDays = CurrentStreakDays,
-                LongestStreakDays = LongestStreakDays,
-                TotalThreads = TotalThreads,
-                FastModeUsagePercentage = FastModeUsagePercentage,
-                MostUsedReasoningEffort = MostUsedReasoningEffort,
-                MostUsedReasoningEffortPercentage = MostUsedReasoningEffortPercentage,
-                UniqueSkillsUsed = UniqueSkillsUsed,
-                TotalSkillsUsed = TotalSkillsUsed,
-                DailyUsageBuckets = merged,
-                TodayUsageIsLocal = true,
-                WeeklyUsageBuckets = WeeklyUsageBuckets,
-                TopInvocations = TopInvocations,
-                GeneratedAt = GeneratedAt,
-                StatsAsOf = StatsAsOf,
-            };
+            return CopyWith(merged, LifetimeTokens + localDelta, Math.Max(PeakDailyTokens, mergedTodayTokens));
         }
+
+        /// <summary>Copies every profile field, swapping in the merged today buckets and totals.</summary>
+        private CodexProfileSnapshot CopyWith(IReadOnlyList<ProfileUsageBucket> todayBuckets, long lifetimeTokens, long peakDailyTokens) => new CodexProfileSnapshot
+        {
+            Username = Username,
+            DisplayName = DisplayName,
+            LifetimeTokens = lifetimeTokens,
+            PeakDailyTokens = peakDailyTokens,
+            LongestRunningTurnSec = LongestRunningTurnSec,
+            CurrentStreakDays = CurrentStreakDays,
+            LongestStreakDays = LongestStreakDays,
+            TotalThreads = TotalThreads,
+            FastModeUsagePercentage = FastModeUsagePercentage,
+            MostUsedReasoningEffort = MostUsedReasoningEffort,
+            MostUsedReasoningEffortPercentage = MostUsedReasoningEffortPercentage,
+            UniqueSkillsUsed = UniqueSkillsUsed,
+            TotalSkillsUsed = TotalSkillsUsed,
+            DailyUsageBuckets = todayBuckets,
+            TodayUsageIsLocal = true,
+            WeeklyUsageBuckets = WeeklyUsageBuckets,
+            TopInvocations = TopInvocations,
+            GeneratedAt = GeneratedAt,
+            StatsAsOf = StatsAsOf,
+        };
     }
 
     public enum ProviderErrorKind

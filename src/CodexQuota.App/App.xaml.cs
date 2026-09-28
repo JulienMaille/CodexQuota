@@ -51,23 +51,24 @@ namespace CodexQuota
             // startup/autostart paths so legacy data and the legacy Run entry don't linger or collide.
             // Each step is isolated: a failing migration must not prevent the taskbar init below,
             // which would otherwise leave a zombie process with no widget.
-            try { AppStorage.MigrateLegacyDataIfNeeded(); }
-            catch (Exception ex) { Log.Warning(ex, "Legacy data migration failed"); }
-            try { StartupSettingsService.MigrateLegacyStartupEntryIfNeeded(); }
-            catch (Exception ex) { Log.Warning(ex, "Legacy startup migration failed"); }
+            StartBestEffort("Legacy data migration", AppStorage.MigrateLegacyDataIfNeeded);
+            StartBestEffort("Legacy startup migration", StartupSettingsService.MigrateLegacyStartupEntryIfNeeded);
 
             // Always-on autostart: (re)register the Run entry so the widget stays at logon.
-            try { StartupSettingsService.Apply(true); }
-            catch (Exception ex) { Log.Warning(ex, "Startup registration failed"); }
+            StartBestEffort("Startup registration", () => StartupSettingsService.Apply(true));
 
-            try { UsageCoordinator.Instance.Start(); }
-            catch (Exception ex) { Log.Warning(ex, "Usage coordinator start failed"); }
-            try { Services.AutoSendService.Instance.Start(); }
-            catch (Exception ex) { Log.Warning(ex, "Auto-send start failed"); }
-            try { Services.CodexPresence.Instance.Start(); }
-            catch (Exception ex) { Log.Warning(ex, "Codex presence start failed"); }
-            try { ScheduleTaskbarInitialization(); }
-            catch (Exception ex) { Log.Warning(ex, "Taskbar initialization scheduling failed"); }
+            StartBestEffort("Usage coordinator start", () => UsageCoordinator.Instance.Start());
+            StartBestEffort("Auto-send start", () => Services.AutoSendService.Instance.Start());
+            StartBestEffort("Codex presence start", () => Services.CodexPresence.Instance.Start());
+            StartBestEffort("Taskbar initialization scheduling", ScheduleTaskbarInitialization);
+        }
+
+        /// <summary>Runs a startup step in isolation: a failing step logs and lets the rest proceed,
+        /// so one bad registration can never leave a zombie process with no widget.</summary>
+        private static void StartBestEffort(string name, Action step)
+        {
+            try { step(); }
+            catch (Exception ex) { Log.Warning(ex, $"{name} failed"); }
         }
 
         /// <summary>Handles an activation that a second process redirected to this instance.

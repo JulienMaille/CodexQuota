@@ -16,7 +16,6 @@ namespace CodexQuota.Taskbar
         private const string WidgetsButtonAutomationId = "WidgetsButton";
 
         private readonly IntPtr hwndTaskbar;
-        private readonly IntPtr hwndReBar;
         private Timer? _timer;
         private IUIAutomation? _automation;
         private readonly object _sync = new();
@@ -37,10 +36,9 @@ namespace CodexQuota.Taskbar
 
         public event EventHandler<TaskbarChangedEventArgs>? TaskbarChangedNotificationCompleted;
 
-        public TaskbarStructureWatcher(IntPtr hwndTaskbar, IntPtr hwndReBar)
+        public TaskbarStructureWatcher(IntPtr hwndTaskbar)
         {
             this.hwndTaskbar = hwndTaskbar;
-            this.hwndReBar = hwndReBar;
 
             widgetsButtonEnabled = SystemInfos.IsTaskBarWidgetsEnabled();
             taskbarCentered = SystemInfos.IsTaskBarCentered();
@@ -65,24 +63,35 @@ namespace CodexQuota.Taskbar
                 bool isHidden = IsTaskbarHidden();
                 bool taskbarRectChanged = HasTaskbarRectChanged();
 
-                TaskbarChangedEventArgs? args = null;
+                TaskbarChangedEventArgs? args;
                 lock (_sync)
                 {
                     if (_disposed)
                         return;
-                    var reason = TaskbarChangeReason.Other;
-                    if (isWidgets != widgetsButtonEnabled) { reason = TaskbarChangeReason.WidgetsButton; widgetsButtonEnabled = isWidgets; }
-                    else if (isCentered != taskbarCentered) { reason = TaskbarChangeReason.Alignment; taskbarCentered = isCentered; }
-                    else if (isHidden != taskbarHidden) { reason = TaskbarChangeReason.Visibility; taskbarHidden = isHidden; }
-                    else if (taskbarRectChanged) { reason = TaskbarChangeReason.Other; }
-                    else
-                    {
+                    TaskbarChangeReason? reason = DetectChange(
+                        isWidgets, widgetsButtonEnabled,
+                        isCentered, taskbarCentered,
+                        isHidden, taskbarHidden,
+                        taskbarRectChanged);
+                    if (reason is null)
                         return;
+
+                    switch (reason.Value)
+                    {
+                        case TaskbarChangeReason.WidgetsButton:
+                            widgetsButtonEnabled = isWidgets;
+                            break;
+                        case TaskbarChangeReason.Alignment:
+                            taskbarCentered = isCentered;
+                            break;
+                        case TaskbarChangeReason.Visibility:
+                            taskbarHidden = isHidden;
+                            break;
                     }
 
                     args = new TaskbarChangedEventArgs
                     {
-                        Reason = reason,
+                        Reason = reason.Value,
                         IsTaskbarHidden = taskbarHidden,
                         IsTaskbarCentered = taskbarCentered,
                         IsTaskbarWidgetsEnabled = widgetsButtonEnabled,
@@ -96,6 +105,23 @@ namespace CodexQuota.Taskbar
             {
                 Interlocked.Exchange(ref _pollActive, 0);
             }
+        }
+
+        private static TaskbarChangeReason? DetectChange(
+            bool isWidgets, bool widgetsEnabled,
+            bool isCentered, bool centered,
+            bool isHidden, bool hidden,
+            bool taskbarRectChanged)
+        {
+            if (isWidgets != widgetsEnabled)
+                return TaskbarChangeReason.WidgetsButton;
+            if (isCentered != centered)
+                return TaskbarChangeReason.Alignment;
+            if (isHidden != hidden)
+                return TaskbarChangeReason.Visibility;
+            if (taskbarRectChanged)
+                return TaskbarChangeReason.Other;
+            return null;
         }
 
         /// <summary>
@@ -112,17 +138,12 @@ namespace CodexQuota.Taskbar
 
             lock (_sync)
             {
-                if (_disposed)
-                    return CachedWidgetsButtonRectLocked();
-
                 IUIAutomationElement? root = null;
                 IUIAutomationCondition? condition = null;
                 IUIAutomationElement? button = null;
                 try
                 {
-                    _automation ??= new CUIAutomation();
-                    root = _automation.ElementFromHandle(hwndTaskbar);
-                    if (root is null)
+                    if (!TryGetAutomationRootLocked(out root) || root is null || _automation is null)
                         return CachedWidgetsButtonRectLocked();
 
                     condition = _automation.CreatePropertyCondition(
@@ -156,23 +177,13 @@ namespace CodexQuota.Taskbar
                 }
                 finally
                 {
-                    ReleaseComObject(button);
-                    ReleaseComObject(condition);
-                    ReleaseComObject(root);
+                    ReleaseAll(button, condition, root);
                 }
             }
         }
 
-        private RECT? CachedWidgetsButtonRect()
-        {
-            lock (_sync)
-            {
-                return CachedWidgetsButtonRectLocked();
-            }
-        }
-
         private RECT? CachedWidgetsButtonRectLocked()
-            => _lastWidgetsButtonRect is { } rect && DateTime.UtcNow - _lastWidgetsButtonRectAt < WidgetsButtonRectMaxAge
+            => _lastWidgetsButtonRect is { } rect && IsFresh(_lastWidgetsButtonRectAt, WidgetsButtonRectMaxAge)
                 ? rect
                 : null;
 
@@ -188,21 +199,21 @@ namespace CodexQuota.Taskbar
         private List<RECT>? TryGetTaskbarButtonRects()
         {
             if (hwndTaskbar == IntPtr.Zero)
-                return CachedTaskButtonRects();
+            {
+                lock (_sync)
+                {
+                    return CachedTaskButtonRectsLocked();
+                }
+            }
 
             lock (_sync)
             {
-                if (_disposed)
-                    return CachedTaskButtonRectsLocked();
-
                 IUIAutomationElement? root = null;
                 IUIAutomationCondition? condition = null;
                 IUIAutomationElementArray? buttons = null;
                 try
                 {
-                    _automation ??= new CUIAutomation();
-                    root = _automation.ElementFromHandle(hwndTaskbar);
-                    if (root is null)
+                    if (!TryGetAutomationRootLocked(out root) || root is null || _automation is null)
                         return CachedTaskButtonRectsLocked();
 
                     condition = _automation.CreatePropertyCondition(
@@ -261,9 +272,7 @@ namespace CodexQuota.Taskbar
                 }
                 finally
                 {
-                    ReleaseComObject(buttons);
-                    ReleaseComObject(condition);
-                    ReleaseComObject(root);
+                    ReleaseAll(buttons, condition, root);
                 }
             }
         }
@@ -281,19 +290,31 @@ namespace CodexQuota.Taskbar
             return TaskBarWidget.IsInVerticalBand(rect, bar.top, bar.bottom);
         }
 
-        private List<RECT>? CachedTaskButtonRects()
-        {
-            lock (_sync)
-            {
-                return CachedTaskButtonRectsLocked();
-            }
-        }
-
         private List<RECT>? CachedTaskButtonRectsLocked()
         {
-            if (_lastTaskButtonRects is { } rects && DateTime.UtcNow - _lastTaskButtonRectsAt < TaskButtonRectsMaxAge)
+            if (_lastTaskButtonRects is { } rects && IsFresh(_lastTaskButtonRectsAt, TaskButtonRectsMaxAge))
                 return new List<RECT>(rects);
             return null;
+        }
+
+        private static bool IsFresh(DateTime sampledAt, TimeSpan maxAge)
+            => DateTime.UtcNow - sampledAt < maxAge;
+
+        private bool TryGetAutomationRootLocked(out IUIAutomationElement? root)
+        {
+            root = null;
+            if (_disposed)
+                return false;
+
+            _automation ??= new CUIAutomation();
+            root = _automation.ElementFromHandle(hwndTaskbar);
+            return root is not null;
+        }
+
+        private static void ReleaseAll(params object?[] comObjects)
+        {
+            foreach (var comObject in comObjects)
+                ReleaseComObject(comObject);
         }
 
         private bool HasTaskbarRectChanged()
@@ -306,8 +327,7 @@ namespace CodexQuota.Taskbar
                 _hasLastTaskbarRect = true;
                 return true;
             }
-            if (current.left == _lastTaskbarRect.left && current.top == _lastTaskbarRect.top
-                && current.right == _lastTaskbarRect.right && current.bottom == _lastTaskbarRect.bottom)
+            if (current.Equals(_lastTaskbarRect))
                 return false;
             _lastTaskbarRect = current;
             return true;

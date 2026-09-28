@@ -90,27 +90,6 @@ namespace CodexQuota.Taskbar
             return true;
         }
 
-        private static int CompareTargets(TaskbarWindowTarget left, TaskbarWindowTarget right)
-        {
-            if (left.IsPrimary != right.IsPrimary)
-                return left.IsPrimary ? -1 : 1;
-
-            // Re-validate liveness: EnumWindows and Sort are separated in time; a taskbar
-            // window destroyed in between must not win the sort or poison ordering.
-            bool leftAlive = User32.IsWindow(left.Handle);
-            bool rightAlive = User32.IsWindow(right.Handle);
-            if (leftAlive != rightAlive)
-                return leftAlive ? -1 : 1;
-            if (!leftAlive)
-                return 0;
-
-            // Bounds precomputed once per sort (single GetWindowRect per target).
-            var leftBounds = GetBounds(left.Handle);
-            var rightBounds = GetBounds(right.Handle);
-            int byTop = leftBounds.top.CompareTo(rightBounds.top);
-            return byTop != 0 ? byTop : leftBounds.left.CompareTo(rightBounds.left);
-        }
-
         private static int CompareTargetsCached(
             TaskbarWindowTarget left,
             TaskbarWindowTarget right,

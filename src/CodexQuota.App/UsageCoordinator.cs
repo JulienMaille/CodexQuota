@@ -89,16 +89,17 @@ namespace CodexQuota
                 // the taskbar-sync alias stay unguarded so they always run.
                 if (Interlocked.Exchange(ref _pollInFlight, 1) != 0)
                 {
-                    ScheduleNextPoll(AdaptiveRefreshPolicy.NextDelay(
-                        _flyoutOpen,
-                        _lastFlyoutOpenAtUtc,
-                        DateTimeOffset.UtcNow,
-                        IsCodexProcessRunning()));
+                    ScheduleNextPoll(ComputeNextDelay(DateTimeOffset.UtcNow));
                     return;
                 }
                 try
                 {
-                    await FetchAndPublishAsync(force: false).ConfigureAwait(false);
+                    // Missed-reset catch-up: a quota window whose reset passed since the last
+                    // successful fetch means the cached values are pre-reset. Force a live fetch —
+                    // a plain tick would otherwise be served from the 60s success TTL.
+                    bool resetCrossed = _lastState?.Fetch is { } prior
+                        && AdaptiveRefreshPolicy.HasCrossedReset(prior.Usage, prior.FetchedAt, DateTimeOffset.UtcNow);
+                    await FetchAndPublishAsync(force: resetCrossed).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -147,6 +148,12 @@ namespace CodexQuota
         /// <see cref="UsageResult"/> and are logged, never thrown.</summary>
         public async Task FetchAndPublishAsync(bool force)
         {
+            // Previous fetch time, captured before this fetch overwrites _lastState: if a reset
+            // crossed during this interval but the fresh snapshot still reports the old (past)
+            // reset, the server hasn't flipped yet and we retry soon. Reading the fresh snapshot
+            // against the previous timestamp is self-limiting — once the previous timestamp moves
+            // past the stale reset, the re-arm falls back to the normal reset-aware delay.
+            DateTimeOffset? previousFetchedAt = _lastState?.Fetch?.FetchedAt;
             try
             {
                 var result = await _service.FetchAsync(ProviderId.Codex, force).ConfigureAwait(false);
@@ -162,13 +169,30 @@ namespace CodexQuota
             // the usage fetch so one failing never blocks the other.
             await FetchProfileAsync().ConfigureAwait(false);
 
-            // Every completed fetch re-arms the next poll at the policy-chosen delay, so a manual
+            // Every completed fetch re-arms the next poll at the reset-aware delay, so a manual
             // refresh or a fetch-on-open also re-bases the cadence (CodexBar-style adaptive refresh).
-            ScheduleNextPoll(AdaptiveRefreshPolicy.NextDelay(
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            TimeSpan delay = ComputeNextDelay(now);
+            if (previousFetchedAt is { } prev
+                && _lastState?.Fetch is { } fresh
+                && AdaptiveRefreshPolicy.HasCrossedReset(fresh.Usage, prev, now)
+                && delay > AdaptiveRefreshPolicy.ResetCatchUpDelay)
+            {
+                delay = AdaptiveRefreshPolicy.ResetCatchUpDelay;
+            }
+            ScheduleNextPoll(delay);
+        }
+
+        /// <summary>Policy delay shortened to land just after the next quota reset, so a reset
+        /// sooner than the adaptive cadence is never missed while the poll loop idles.</summary>
+        private TimeSpan ComputeNextDelay(DateTimeOffset now)
+        {
+            TimeSpan policyDelay = AdaptiveRefreshPolicy.NextDelay(
                 _flyoutOpen,
                 _lastFlyoutOpenAtUtc,
-                DateTimeOffset.UtcNow,
-                IsCodexProcessRunning()));
+                now,
+                IsCodexProcessRunning());
+            return AdaptiveRefreshPolicy.NextDelayWithReset(policyDelay, _lastState?.Fetch?.Usage, now);
         }
 
         /// <summary>Fetches the Codex profile (lifetime tokens, daily activity buckets) and raises

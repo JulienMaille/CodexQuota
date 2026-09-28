@@ -156,15 +156,7 @@ namespace CodexQuota
             AppearanceSection.Opacity = 0;
             AppearanceSectionTransform.Y = 12;
 
-            var fade = new DoubleAnimation
-            {
-                From = 0,
-                To = 1,
-                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
-                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
-            };
-            Storyboard.SetTarget(fade, AppearanceSection);
-            Storyboard.SetTargetProperty(fade, "Opacity");
+            var fade = BuildFade(0, 1, 180, EasingMode.EaseOut);
 
             var slide = new DoubleAnimation
             {
@@ -184,8 +176,7 @@ namespace CodexQuota
                 AppearanceSectionTransform.Y = 0;
             };
 
-            _appearanceStoryboard = storyboard;
-            storyboard.Begin();
+            RunAppearanceStoryboard(storyboard);
         }
 
         // Collapses the section without toggling: sets the open flag false so the section does not
@@ -207,15 +198,7 @@ namespace CodexQuota
             var storyboard = new Storyboard();
 
             // Collapse: fade the section out, then remove it from layout.
-            var fade = new DoubleAnimation
-            {
-                From = 1,
-                To = 0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-                EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseIn },
-            };
-            Storyboard.SetTarget(fade, AppearanceSection);
-            Storyboard.SetTargetProperty(fade, "Opacity");
+            var fade = BuildFade(1, 0, 140, EasingMode.EaseIn);
 
             storyboard.Children.Add(fade);
             storyboard.Completed += (_, _) =>
@@ -225,40 +208,46 @@ namespace CodexQuota
                 AppearanceSectionTransform.Y = 0;
             };
 
+            RunAppearanceStoryboard(storyboard);
+        }
+
+        private DoubleAnimation BuildFade(double from, double to, int milliseconds, EasingMode easing)
+        {
+            var fade = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+                EasingFunction = new QuarticEase { EasingMode = easing },
+            };
+            Storyboard.SetTarget(fade, AppearanceSection);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+            return fade;
+        }
+
+        private void RunAppearanceStoryboard(Storyboard storyboard)
+        {
             _appearanceStoryboard = storyboard;
             storyboard.Begin();
         }
 
-        private void AppearanceCheck_Checked(object sender, RoutedEventArgs e)
+        private void AppearanceCheck_Checked(object sender, RoutedEventArgs e) => SetAppearanceCheck(sender, true);
+
+        private void AppearanceCheck_Unchecked(object sender, RoutedEventArgs e) => SetAppearanceCheck(sender, false);
+
+        private void SetAppearanceCheck(object sender, bool isChecked)
         {
             if (_initializingAppearance)
                 return;
 
             if (ReferenceEquals(sender, ShowIconCheck))
-                WidgetAppearanceSettings.ShowIcon = true;
+                WidgetAppearanceSettings.ShowIcon = isChecked;
             else if (ReferenceEquals(sender, ShowProgressBarCheck))
-                WidgetAppearanceSettings.ShowProgressBar = true;
+                WidgetAppearanceSettings.ShowProgressBar = isChecked;
             else if (ReferenceEquals(sender, ColorCodeTextCheck))
-                WidgetAppearanceSettings.ColorCodeText = true;
+                WidgetAppearanceSettings.ColorCodeText = isChecked;
             else if (ReferenceEquals(sender, ImminentCheck))
-                WidgetAppearanceSettings.ShowImminentDate = true;
-
-            RefreshPanelForAppearance();
-        }
-
-        private void AppearanceCheck_Unchecked(object sender, RoutedEventArgs e)
-        {
-            if (_initializingAppearance)
-                return;
-
-            if (ReferenceEquals(sender, ShowIconCheck))
-                WidgetAppearanceSettings.ShowIcon = false;
-            else if (ReferenceEquals(sender, ShowProgressBarCheck))
-                WidgetAppearanceSettings.ShowProgressBar = false;
-            else if (ReferenceEquals(sender, ColorCodeTextCheck))
-                WidgetAppearanceSettings.ColorCodeText = false;
-            else if (ReferenceEquals(sender, ImminentCheck))
-                WidgetAppearanceSettings.ShowImminentDate = false;
+                WidgetAppearanceSettings.ShowImminentDate = isChecked;
 
             RefreshPanelForAppearance();
         }

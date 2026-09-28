@@ -1,5 +1,4 @@
 using System;
-using Microsoft.Win32;
 
 namespace CodexQuota.Services;
 
@@ -88,87 +87,30 @@ public sealed class AutoSendSettings : IAutoSendStore
         => ticks >= DateTimeOffset.MinValue.UtcTicks && ticks <= DateTimeOffset.MaxValue.UtcTicks ? ticks : 0;
 
     private static int ReadInt(string name, int defaultValue)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            // P2: accept DWORD/QWORD/REG_SZ instead of silently defaulting on a type mismatch.
-            return PaceSettings.CoerceInt(key?.GetValue(name), defaultValue);
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        // P2: accept DWORD/QWORD/REG_SZ instead of silently defaulting on a type mismatch.
+        => RegistrySettings.ReadInt(KeyPath, name, defaultValue);
 
     private static void WriteInt(string name, int value)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-            key?.SetValue(name, value, RegistryValueKind.DWord);
-        }
-        catch (Exception ex)
+        => RegistrySettings.WriteInt(KeyPath, name, value, ex =>
         {
             // Registry writes are best-effort (locked hive, no profile): surface the failure so a
             // crash-restart that loses the arm is diagnosable. The service keeps running with
             // in-memory state only — there is no cross-process in-memory fallback for the store.
             Diagnostics.Log.Warning(ex, $"Auto-send store write failed ({name})");
-        }
-    }
+        });
 
     private static long ReadLong(string name, long defaultValue)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            return CoerceLong(key?.GetValue(name), defaultValue);
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.ReadLong(KeyPath, name, defaultValue);
 
     internal static long CoerceLong(object? raw, long defaultValue)
-    {
-        try
-        {
-            switch (raw)
-            {
-                case null:
-                    return defaultValue;
-                case long l:
-                    return l;
-                case int i:
-                    return i;
-                case string s when long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long parsed):
-                    return parsed;
-                case IConvertible convertible:
-                    return Convert.ToInt64(convertible, System.Globalization.CultureInfo.InvariantCulture);
-                default:
-                    return defaultValue;
-            }
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.CoerceLong(raw, defaultValue);
 
     private static void WriteLong(string name, long value)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-            key?.SetValue(name, value, RegistryValueKind.QWord);
-        }
-        catch (Exception ex)
+        => RegistrySettings.WriteLong(KeyPath, name, value, ex =>
         {
             // Registry writes are best-effort (locked hive, no profile): surface the failure so a
             // crash-restart that loses the arm is diagnosable. The service keeps running with
             // in-memory state only — there is no cross-process in-memory fallback for the store.
             Diagnostics.Log.Warning(ex, $"Auto-send store write failed ({name})");
-        }
-    }
+        });
 }

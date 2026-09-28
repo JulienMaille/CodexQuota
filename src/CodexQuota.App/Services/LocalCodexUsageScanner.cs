@@ -64,15 +64,7 @@ internal static class LocalCodexUsageScanner
             {
                 paths = Directory.GetFiles(directory, "*.jsonl", SearchOption.TopDirectoryOnly);
             }
-            catch (IOException)
-            {
-                continue;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
-            catch (ArgumentException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 continue;
             }
@@ -83,15 +75,7 @@ internal static class LocalCodexUsageScanner
                 {
                     total = SaturatingAdd(total, ReadFileTokens(path, day));
                 }
-                catch (IOException)
-                {
-                    continue;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    continue;
-                }
-                catch (ArgumentException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
                 {
                     continue;
                 }
@@ -218,24 +202,7 @@ internal static class LocalCodexUsageScanner
                 {
                     using var document = JsonDocument.Parse(line);
                     var root = document.RootElement;
-                    // Older journals carry JSON-null fields ("payload":null, "info":null);
-                    // TryGetProperty on a non-object element throws InvalidOperationException,
-                    // so every navigation hop re-checks ValueKind first.
-                    if (root.ValueKind != JsonValueKind.Object
-                        || !TryString(root, "type", out string? eventType)
-                        || !string.Equals(eventType, "event_msg", StringComparison.Ordinal)
-                        || !root.TryGetProperty("payload", out var payload)
-                        || payload.ValueKind != JsonValueKind.Object
-                        || !TryString(payload, "type", out string? payloadType)
-                        || !string.Equals(payloadType, "token_count", StringComparison.Ordinal)
-                        || !TryString(root, "timestamp", out string? timestampText)
-                        || !DateTimeOffset.TryParse(
-                            timestampText,
-                            CultureInfo.InvariantCulture,
-                            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                            out var timestamp)
-                        || !payload.TryGetProperty("info", out var info)
-                        || info.ValueKind != JsonValueKind.Object)
+                    if (!IsTokenCountEvent(root, out var timestamp, out var info))
                     {
                         continue;
                     }
@@ -290,6 +257,37 @@ internal static class LocalCodexUsageScanner
         }
 
         return total;
+    }
+
+    private static bool IsTokenCountEvent(JsonElement root, out DateTimeOffset timestamp, out JsonElement info)
+    {
+        timestamp = default;
+        info = default;
+        // Older journals carry JSON-null fields ("payload":null, "info":null);
+        // TryGetProperty on a non-object element throws InvalidOperationException,
+        // so every navigation hop re-checks ValueKind first.
+        if (root.ValueKind != JsonValueKind.Object
+            || !TryString(root, "type", out string? eventType)
+            || !string.Equals(eventType, "event_msg", StringComparison.Ordinal)
+            || !root.TryGetProperty("payload", out var payload)
+            || payload.ValueKind != JsonValueKind.Object
+            || !TryString(payload, "type", out string? payloadType)
+            || !string.Equals(payloadType, "token_count", StringComparison.Ordinal)
+            || !TryString(root, "timestamp", out string? timestampText)
+            || !DateTimeOffset.TryParse(
+                timestampText,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out timestamp)
+            || !payload.TryGetProperty("info", out info)
+            || info.ValueKind != JsonValueKind.Object)
+        {
+            timestamp = default;
+            info = default;
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryUsageTotal(JsonElement usage, out long total)

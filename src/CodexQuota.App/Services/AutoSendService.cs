@@ -155,34 +155,12 @@ public sealed class AutoSendService
 
         lock (_gate)
         {
-            // P1/P5 torn-write guard: a crash between Target and Armed must never resurrect an
-            // arm with no target. Ignore Armed when Target==0.
-            if (!_store.Armed || _store.TargetResetAtUtcTicks == 0)
-            {
-                if (_store is { Armed: true })
-                    _store.Armed = false;
+            if (!TryRestorePersistedArm(out var target, out var baseline))
                 return;
-            }
-
-            var target = new DateTimeOffset(_store.TargetResetAtUtcTicks, TimeSpan.Zero);
-            if (target == DateTimeOffset.MinValue)
-            {
-                _store.Armed = false;
-                return;
-            }
-
-            // Never re-fire a reset we already acted on (the app restarted after firing).
-            if (_store.LastFiredResetAtUtcTicks == _store.TargetResetAtUtcTicks)
-            {
-                _store.Armed = false;
-                return;
-            }
 
             _mode = _store.Mode;
             _target = target;
-            _baselineWeeklyResetAt = _store.BaselineWeeklyResetAtUtcTicks > 0
-                ? new DateTimeOffset(_store.BaselineWeeklyResetAtUtcTicks, TimeSpan.Zero)
-                : null;
+            _baselineWeeklyResetAt = baseline;
             _state = AutoSendState.Armed;
             _fireClaimed = false;
         }
@@ -190,6 +168,41 @@ public sealed class AutoSendService
         Log.Information($"Auto-send re-armed for session reset at {_target:O} (mode {_mode})");
         RescheduleTrigger();
         PublishStatus();
+    }
+
+    /// <summary>Caller must hold <see cref="_gate"/>. Clears a stale persisted arm and returns false when it cannot be restored.</summary>
+    private bool TryRestorePersistedArm(out DateTimeOffset target, out DateTimeOffset? baseline)
+    {
+        target = default;
+        baseline = null;
+
+        // P1/P5 torn-write guard: a crash between Target and Armed must never resurrect an
+        // arm with no target. Ignore Armed when Target==0.
+        if (!_store.Armed || _store.TargetResetAtUtcTicks == 0)
+        {
+            if (_store is { Armed: true })
+                _store.Armed = false;
+            return false;
+        }
+
+        target = new DateTimeOffset(_store.TargetResetAtUtcTicks, TimeSpan.Zero);
+        if (target == DateTimeOffset.MinValue)
+        {
+            _store.Armed = false;
+            return false;
+        }
+
+        // Never re-fire a reset we already acted on (the app restarted after firing).
+        if (_store.LastFiredResetAtUtcTicks == _store.TargetResetAtUtcTicks)
+        {
+            _store.Armed = false;
+            return false;
+        }
+
+        baseline = _store.BaselineWeeklyResetAtUtcTicks > 0
+            ? new DateTimeOffset(_store.BaselineWeeklyResetAtUtcTicks, TimeSpan.Zero)
+            : null;
+        return true;
     }
 
     /// <summary>Detaches the coordinator feed and cancels any pending trigger. Idempotent.</summary>
@@ -220,15 +233,7 @@ public sealed class AutoSendService
         {
             lock (_gate)
             {
-                return new AutoSendStatus
-                {
-                    State = _state,
-                    Mode = _mode,
-                    TargetResetAt = _state == AutoSendState.Idle ? null : _target,
-                    Outcome = _outcome,
-                    OutcomeAt = _outcomeAt,
-                    OutcomeDetail = _outcomeDetail,
-                };
+                return BuildStatusLocked();
             }
         }
     }
@@ -299,6 +304,17 @@ public sealed class AutoSendService
         PublishStatus();
     }
 
+    /// <summary>CAS Armed-&gt;Confirming under the gate so only one poll/trigger wins the fire. Caller must hold <see cref="_gate"/>.</summary>
+    private bool TryClaimFireLocked()
+    {
+        if (_state != AutoSendState.Armed)
+            return false;
+
+        _state = AutoSendState.Confirming;
+        _fireClaimed = true;
+        return true;
+    }
+
     internal void OnStateChanged(UsageResult result)
     {
         // Stale/pending/error results never advance the baselines and never confirm a reset.
@@ -340,8 +356,7 @@ public sealed class AutoSendService
 
             // P0 double-send guard: CAS Armed->Confirming under the gate so only one poll
             // wins the fire; a concurrent poll observes Confirming and stands down.
-            _state = AutoSendState.Confirming;
-            _fireClaimed = true;
+            TryClaimFireLocked();
         }
 
         PublishStatus();
@@ -382,13 +397,10 @@ public sealed class AutoSendService
     {
         lock (_gate)
         {
-            if (_state != AutoSendState.Armed)
-                return;
-
             // P0 double-send guard (timer path): the Armed->Confirming claim under the gate
             // lets exactly one trigger own the fire; ConfirmAndFireAsync no-ops without it.
-            _state = AutoSendState.Confirming;
-            _fireClaimed = true;
+            if (!TryClaimFireLocked())
+                return;
         }
 
         PublishStatus();
@@ -455,9 +467,7 @@ public sealed class AutoSendService
 
             // Weekly veto: the weekly window observed now advanced past the armed baseline, meaning
             // it reset at (or during the run-up to) this session reset.
-            skipForWeekly = _mode == AutoSendMode.SkipIfWeeklyReset
-                && _baselineWeeklyResetAt is { } baseline
-                && usage.Secondary?.ResetAt > baseline;
+            skipForWeekly = IsWeeklyResetObservedLocked(usage);
         }
 
         if (skipForWeekly)
@@ -500,6 +510,13 @@ public sealed class AutoSendService
         FinishLocked(outcome, detail);
     }
 
+    /// <summary>Weekly veto: the weekly window observed now advanced past the armed baseline, meaning
+    /// it reset at (or during the run-up to) this session reset. Caller must hold <see cref="_gate"/>.</summary>
+    private bool IsWeeklyResetObservedLocked(UsageSnapshot usage)
+        => _mode == AutoSendMode.SkipIfWeeklyReset
+            && _baselineWeeklyResetAt is { } baseline
+            && usage.Secondary?.ResetAt > baseline;
+
     private DateTimeOffset ReadTarget()
     {
         lock (_gate)
@@ -513,15 +530,8 @@ public sealed class AutoSendService
     {
         lock (_gate)
         {
-            // A finish already recorded (or a clean disarm) blocks a second terminal transition; an
-            // arm rejection is allowed even from the initial Idle state.
-            if (_state == AutoSendState.Idle && _outcome != AutoSendOutcome.None)
-            {
-                // P2: a repeated ArmRejected must still be visible — a stale outcome (e.g. Sent from
-                // a previous arm) would otherwise hide the rejection from the UI. Refresh it.
-                if (outcome != AutoSendOutcome.ArmRejected)
-                    return;
-            }
+            if (IsDuplicateFinish(outcome))
+                return;
 
             _state = AutoSendState.Idle;
             _outcome = outcome;
@@ -536,20 +546,34 @@ public sealed class AutoSendService
         PublishStatus();
     }
 
+    /// <summary>A finish already recorded (or a clean disarm) blocks a second terminal transition; an
+    /// arm rejection is allowed even from the initial Idle state. Caller must hold <see cref="_gate"/>.
+    /// A repeated ArmRejected must still be visible — a stale outcome (e.g. Sent from
+    /// a previous arm) would otherwise hide the rejection from the UI. Refresh it.</summary>
+    private bool IsDuplicateFinish(AutoSendOutcome outcome)
+        => _state == AutoSendState.Idle && _outcome != AutoSendOutcome.None
+            && outcome != AutoSendOutcome.ArmRejected;
+
+    /// <summary>Caller must hold <see cref="_gate"/>.</summary>
+    private AutoSendStatus BuildStatusLocked()
+    {
+        return new AutoSendStatus
+        {
+            State = _state,
+            Mode = _mode,
+            TargetResetAt = _state == AutoSendState.Idle ? null : _target,
+            Outcome = _outcome,
+            OutcomeAt = _outcomeAt,
+            OutcomeDetail = _outcomeDetail,
+        };
+    }
+
     private void PublishStatus()
     {
         AutoSendStatus status;
         lock (_gate)
         {
-            status = new AutoSendStatus
-            {
-                State = _state,
-                Mode = _mode,
-                TargetResetAt = _state == AutoSendState.Idle ? null : _target,
-                Outcome = _outcome,
-                OutcomeAt = _outcomeAt,
-                OutcomeDetail = _outcomeDetail,
-            };
+            status = BuildStatusLocked();
         }
 
         try

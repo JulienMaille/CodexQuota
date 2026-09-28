@@ -67,33 +67,10 @@ public sealed class CodexPresence
 
     private void Poll()
     {
-        // P2: per-probe try/catch — a failing probe preserves the previous state instead of
+        // Per-probe try/catch — a failing probe preserves the previous state instead of
         // reporting a false "down".
-        bool processRunning;
-        try
-        {
-            processRunning = UsageCoordinator.IsCodexProcessRunning();
-        }
-        catch
-        {
-            lock (_gate)
-            {
-                processRunning = _isRunning;
-            }
-        }
-
-        bool windowFound;
-        try
-        {
-            windowFound = CodexAppSender.FindCodexWindow() != IntPtr.Zero;
-        }
-        catch
-        {
-            lock (_gate)
-            {
-                windowFound = _isRunning;
-            }
-        }
+        bool processRunning = ProbeSafely(UsageCoordinator.IsCodexProcessRunning);
+        bool windowFound = ProbeSafely(() => CodexAppSender.FindCodexWindow() != IntPtr.Zero);
 
         bool running = processRunning || windowFound;
 
@@ -111,6 +88,28 @@ public sealed class CodexPresence
         catch
         {
             // One dead subscriber must not kill the poller.
+        }
+    }
+
+    /// <summary>Last known running state under the gate.</summary>
+    private bool LastKnownLocked()
+    {
+        lock (_gate)
+        {
+            return _isRunning;
+        }
+    }
+
+    /// <summary>Runs a probe, preserving the previous state when the probe throws.</summary>
+    private bool ProbeSafely(Func<bool> probe)
+    {
+        try
+        {
+            return probe();
+        }
+        catch
+        {
+            return LastKnownLocked();
         }
     }
 }

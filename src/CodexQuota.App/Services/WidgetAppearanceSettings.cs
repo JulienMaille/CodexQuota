@@ -47,15 +47,7 @@ public static class WidgetAppearanceSettings
     /// value already exists, in which case it is authoritative.
     /// </summary>
     internal static void MigrateInverted(RegistryKey key, string legacyName, string newName)
-    {
-        if (key.GetValue(legacyName) is not int legacy)
-            return;
-
-        // No Delete-before-Set: write the new value first so a crash cannot lose both.
-        if (key.GetValue(newName) is not int)
-            key.SetValue(newName, legacy == 0 ? 1 : 0, RegistryValueKind.DWord);
-        key.DeleteValue(legacyName, throwOnMissingValue: false);
-    }
+        => RegistrySettings.MigrateValue(key, legacyName, newName, legacy => legacy == 0 ? 1 : 0);
 
     /// <summary>
     /// Maps the retired "ImminentWindowHours" threshold (0 = always count down, anything else =
@@ -63,14 +55,7 @@ public static class WidgetAppearanceSettings
     /// fixed at 24 hours. A value already set under the new name wins over the legacy one.
     /// </summary>
     internal static void MigrateImminentWindow(RegistryKey key)
-    {
-        if (key.GetValue("ImminentWindowHours") is not int legacy)
-            return;
-
-        if (key.GetValue(ShowImminentDateValueName) is not int)
-            key.SetValue(ShowImminentDateValueName, legacy == 0 ? 0 : 1, RegistryValueKind.DWord);
-        key.DeleteValue("ImminentWindowHours", throwOnMissingValue: false);
-    }
+        => RegistrySettings.MigrateValue(key, "ImminentWindowHours", ShowImminentDateValueName, legacy => legacy == 0 ? 0 : 1);
 
     /// <summary>Shows the Codex badge glyph in the taskbar tile (cleared shows the name letter instead).</summary>
     public static bool ShowIcon
@@ -118,57 +103,23 @@ public static class WidgetAppearanceSettings
     }
 
     private static bool ReadBool(string name, bool defaultValue)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            return key?.GetValue(name) is int value ? value != 0 : defaultValue;
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.ReadBool(KeyPath, name, defaultValue);
 
     private static int ReadInt(string name, int defaultValue)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(KeyPath, writable: false);
-            return key?.GetValue(name) is int value ? value : defaultValue;
-        }
-        catch
-        {
-            return defaultValue;
-        }
-    }
+        => RegistrySettings.ReadInt(KeyPath, name, defaultValue);
 
     private static void WriteBool(string name, bool value)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-            key?.SetValue(name, value ? 1 : 0, RegistryValueKind.DWord);
-        }
-        catch
-        {
-            // Appearance is best-effort; the tile just keeps its default look.
-        }
+        // Appearance is best-effort; the tile just keeps its default look.
+        RegistrySettings.WriteBool(KeyPath, name, value);
 
         Changed?.Invoke();
     }
 
     private static void WriteInt(string name, int value)
     {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-            key?.SetValue(name, value, RegistryValueKind.DWord);
-        }
-        catch
-        {
-            // Appearance is best-effort; the tile just keeps its default look.
-        }
+        // Appearance is best-effort; the tile just keeps its default look.
+        RegistrySettings.WriteInt(KeyPath, name, value);
 
         Changed?.Invoke();
     }

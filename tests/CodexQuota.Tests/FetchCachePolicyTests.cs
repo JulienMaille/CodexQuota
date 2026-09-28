@@ -132,6 +132,48 @@ public class FetchCachePolicyTests
                 fetchedAt));
 
     [Fact]
+    public async Task FetchAsync_ResetCrossedInsideTtl_BypassesCacheWithLiveFetch()
+    {
+        // Quota reset 10s ago, cached fetch 30s ago: the success TTL (60s) is still valid, but the
+        // cached values are pre-reset and must not be served — the non-forced fetch goes live.
+        var service = new UsageService();
+        var provider = new FlakyProvider();
+        service.Register(provider);
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        provider.NextFetchedAt = now.AddSeconds(-30);
+        provider.NextResetAt = now.AddSeconds(-10);
+        var first = await service.FetchAsync(ProviderId.Codex);
+        Assert.True(first.Ok);
+
+        provider.NextPrimaryPercent = 5;
+        var second = await service.FetchAsync(ProviderId.Codex);
+
+        Assert.Equal(2, provider.FetchCount);
+        Assert.Equal(5, second.Fetch!.Usage.Primary.UsedPercent);
+    }
+
+    [Fact]
+    public async Task FetchAsync_FutureResetInsideTtl_ServesCache()
+    {
+        // No reset crossed since the cached fetch: the TTL still applies and no live fetch runs.
+        var service = new UsageService();
+        var provider = new FlakyProvider();
+        service.Register(provider);
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        provider.NextFetchedAt = now.AddSeconds(-30);
+        provider.NextResetAt = now.AddHours(1);
+        var first = await service.FetchAsync(ProviderId.Codex);
+
+        provider.NextPrimaryPercent = 5;
+        var second = await service.FetchAsync(ProviderId.Codex);
+
+        Assert.Same(first, second);
+        Assert.Equal(1, provider.FetchCount);
+    }
+
+    [Fact]
     public async Task FetchAsync_WindowVisibilityChange_IsNotCollapsedAsSameUsage()
     {
         var service = new UsageService();
@@ -147,12 +189,54 @@ public class FetchCachePolicyTests
         Assert.False(second.Fetch!.Usage.HasPrimaryWindow);
     }
 
+    [Fact]
+    public async Task FetchAsync_FreshFetchOmitsCost_RetainsPreviousCost()
+    {
+        // Flaky credits field: first live fetch reports a balance, the next omits it. The
+        // published result must keep the previous Cost instead of flickering to null.
+        var service = new UsageService();
+        var provider = new FlakyProvider { NextCost = new CostSnapshot(12.5, "credits", "Credits") };
+        service.Register(provider);
+
+        var first = await service.FetchAsync(ProviderId.Codex, force: true);
+        Assert.NotNull(first.Fetch!.Usage.Cost);
+
+        var second = await service.FetchAsync(ProviderId.Codex, force: true);
+
+        Assert.NotNull(second.Fetch!.Usage.Cost);
+        Assert.Equal(12.5, second.Fetch.Usage.Cost!.Amount);
+    }
+
+    [Fact]
+    public async Task FetchAsync_FreshFetchOmitsResetCredits_RetainsPreviousResetCredits()
+    {
+        // The 3s reset-credits sub-request can time out on a single poll: a fresh null must
+        // not flap the reset-credits row away while the previous live value stands.
+        var service = new UsageService();
+        var provider = new FlakyProvider
+        {
+            NextResetCredits = new ResetCreditsSnapshot(3, Array.Empty<ResetCreditGrant>()),
+        };
+        service.Register(provider);
+
+        var first = await service.FetchAsync(ProviderId.Codex, force: true);
+        Assert.NotNull(first.Fetch!.Usage.ResetCredits);
+
+        var second = await service.FetchAsync(ProviderId.Codex, force: true);
+
+        Assert.NotNull(second.Fetch!.Usage.ResetCredits);
+        Assert.Equal(3, second.Fetch.Usage.ResetCredits!.AvailableCount);
+    }
+
     private sealed class FlakyProvider : IUsageProvider
     {
         public ProviderException? NextException { get; set; }
         public double? NextPrimaryPercent { get; set; }
         public double? NextSecondaryPercent { get; set; }
+        public CostSnapshot? NextCost { get; set; }
+        public ResetCreditsSnapshot? NextResetCredits { get; set; }
         public DateTimeOffset? NextResetAt { get; set; }
+        public DateTimeOffset? NextFetchedAt { get; set; }
         public bool? NextHasPrimaryWindow { get; set; }
         public int FetchCount { get; private set; }
 
@@ -176,12 +260,18 @@ public class FetchCachePolicyTests
                 HasPrimaryWindow = NextHasPrimaryWindow ?? true,
                 Secondary = new RateWindow(NextSecondaryPercent ?? 73, resetAt: NextResetAt),
                 LoginMethod = "Max",
+                Cost = NextCost,
+                ResetCredits = NextResetCredits,
             };
             NextPrimaryPercent = null;
             NextSecondaryPercent = null;
+            NextCost = null;
+            NextResetCredits = null;
             NextResetAt = null;
             NextHasPrimaryWindow = null;
-            return Task.FromResult(new ProviderFetchResult(usage, "live"));
+            var fetchedAt = NextFetchedAt;
+            NextFetchedAt = null;
+            return Task.FromResult(new ProviderFetchResult(usage, "live", fetchedAt));
         }
     }
 }

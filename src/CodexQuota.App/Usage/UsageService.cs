@@ -84,13 +84,34 @@ namespace CodexQuota.Usage
             lock (_lock)
             {
                 if (!force && TryGetValidEntry(id, out var cached))
-                    return cached.Result;
+                {
+                    // A quota reset that landed after the cached fetch makes the cached pre-reset
+                    // values stale even while the success TTL has not expired: skip the cache and
+                    // fall through to a live fetch instead of serving them.
+                    bool resetCrossed = cached.Result.Fetch is { } prior
+                        && AdaptiveRefreshPolicy.HasCrossedReset(prior.Usage, prior.FetchedAt, DateTimeOffset.Now);
+                    if (!resetCrossed)
+                        return cached.Result;
+                }
             }
 
             try
             {
                 var fetch = await provider.FetchUsageAsync(ct).ConfigureAwait(false);
                 var result = UsageResult.Success(id, provider, fetch);
+                // Stickiness against flaky single-field omission: the credits balance and the
+                // 3s-timeout reset-credits sub-request intermittently come back absent. A fresh
+                // null must not flap a visible row to hidden/zero — carry forward the last live
+                // values so the merge (and the SameUsage comparison below) sees continuity.
+                if (TryGetLastSuccessfulLiveResult(id, out var lastLive)
+                    && lastLive.Fetch is { } prevFetch
+                    && result.Fetch is { } freshFetch)
+                {
+                    if (freshFetch.Usage.Cost is null && prevFetch.Usage.Cost is { } prevCost)
+                        freshFetch.Usage.Cost = prevCost;
+                    if (freshFetch.Usage.ResetCredits is null && prevFetch.Usage.ResetCredits is { } prevReset)
+                        freshFetch.Usage.ResetCredits = prevReset;
+                }
                 if (TryGetLastSuccessfulLiveResult(id, out var lastSuccess) && SameUsage(lastSuccess, result))
                 {
                     // A live fetch just confirmed the unchanged values. Return the fresh instance so

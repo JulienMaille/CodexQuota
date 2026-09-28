@@ -101,9 +101,6 @@ namespace CodexQuota.Taskbar
         private ProviderId? pendingActiveProvider;
         private bool isRecomputingLayout;
         private bool layoutRepositionPending;
-        // Null until the first pass, so that pass always logs. A plain int seeded at 0 could match the first
-        // real hash and swallow the only line that says whether the widget ever laid its tiles out.
-        private int? lastLayoutHash;
         private bool loggedMissingPanel;
         private DesktopWindowXamlSource? host;
         private Microsoft.UI.Xaml.FrameworkElement? hostContent;
@@ -183,7 +180,7 @@ namespace CodexQuota.Taskbar
             dpiScale = taskbarDpi / 96d;
             WidgetHostWidth = (int)Math.Ceiling(dpiScale * DefaultWidgetHostWidth);
             Log.Debug($"Widget ctor: taskbar=0x{hwndShell.ToInt64():X}, primary={isPrimaryTaskbar}, DPI={taskbarDpi}, Width={WidgetHostWidth}");
-            taskbarWatcher = new TaskbarStructureWatcher(hwndShell, hwndReBar);
+            taskbarWatcher = new TaskbarStructureWatcher(hwndShell);
             taskbarWatcher.TaskbarChangedNotificationCompleted += (_, e) =>
             {
                 if (initialized)
@@ -524,15 +521,6 @@ namespace CodexQuota.Taskbar
                     separators[i].Foreground = brush;
                 }
 
-                // The layout is recomputed on every usage publish, so only report an actual change — and
-                // decide that from a hash, so the unchanged case (nearly all of them) formats no string.
-                int hash = LayoutHash(count, total);
-                if (hash != lastLayoutHash)
-                {
-                    lastLayoutHash = hash;
-                    Log.Debug($"[widget] layout {DescribeLayout(count, total)}");
-                }
-
                 bool resized = ResizeWidgetHost(count == 0 ? DefaultWidgetHostWidth : total);
                 if (resized || forceReposition)
                     UpdatePosition();
@@ -558,31 +546,6 @@ namespace CodexQuota.Taskbar
 
         private bool IsActiveTile(int slot)
             => tileProviders[slot] is { } provider && activeTileProvider == provider;
-
-        private int LayoutHash(int count, int total)
-        {
-            var hash = new HashCode();
-            hash.Add(availableLogicalWidth);
-            hash.Add(total);
-            for (int n = 0; n < count; n++)
-            {
-                hash.Add(tileProviders[layoutSlots[n]]);
-                hash.Add(layoutWidths[n]);
-            }
-            return hash.ToHashCode();
-        }
-
-        private string DescribeLayout(int count, int total)
-        {
-            var text = new StringBuilder(128);
-            text.Append("budget=").Append(availableLogicalWidth).Append(" tiles=[");
-            for (int n = 0; n < count; n++)
-            {
-                if (n > 0) text.Append(',');
-                text.Append(tileProviders[layoutSlots[n]]).Append(':').Append(layoutWidths[n]);
-            }
-            return text.Append("] total=").Append(total).ToString();
-        }
 
         /// <summary>
         /// Holds tiles back until the row fits the free taskbar span, so the widget never grows over the

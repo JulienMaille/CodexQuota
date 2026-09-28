@@ -77,7 +77,7 @@ namespace CodexQuota.Usage
         {
             try
             {
-                var savedAt = DateTimeOffset.Now;
+                var savedAts = LoadAllSavedAt(directory);
                 var entries = results
                     .Where(kv => kv.Value.Fetch is not null)
                     .Select(kv =>
@@ -86,7 +86,7 @@ namespace CodexQuota.Usage
                         // Stamping "now" would silently extend its restore life past MaxRestoreAge.
                         // (Usual caller already skips re-saving unchanged live values; this covers the
                         // paths that hand an IsStale fallback snapshot back to persistence.)
-                        var previouslySavedAt = LoadSavedAt(directory, kv.Key);
+                        savedAts.TryGetValue(kv.Key, out DateTimeOffset? previouslySavedAt);
                         var savedAt = kv.Value.IsStale && previouslySavedAt is { } preserved
                             ? preserved
                             : DateTimeOffset.Now;
@@ -116,21 +116,27 @@ namespace CodexQuota.Usage
             }
         }
 
-        private static DateTimeOffset? LoadSavedAt(string directory, ProviderId id)
+        private static Dictionary<ProviderId, DateTimeOffset?> LoadAllSavedAt(string directory)
         {
+            var savedAts = new Dictionary<ProviderId, DateTimeOffset?>();
             try
             {
                 var path = FilePathIn(directory);
                 if (!File.Exists(path))
-                    return null;
+                    return savedAts;
 
                 var file = JsonSerializer.Deserialize(File.ReadAllText(path), UsageSnapshotsJsonContext.Default.StoredFile);
-                return file?.Entries?.FirstOrDefault(e => string.Equals(e.Provider, id.ToString(), StringComparison.Ordinal))?.SavedAt;
+                foreach (var entry in file?.Entries ?? Enumerable.Empty<StoredEntry>())
+                {
+                    if (Enum.TryParse<ProviderId>(entry.Provider, out var id) && !savedAts.ContainsKey(id))
+                        savedAts[id] = entry.SavedAt;
+                }
             }
             catch
             {
-                return null;
             }
+
+            return savedAts;
         }
 
         private static bool HasResetWindow(StoredUsage usage, DateTimeOffset now)
