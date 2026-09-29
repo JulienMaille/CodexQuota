@@ -83,6 +83,8 @@ public sealed class AutoSendService
     private static readonly TimeSpan TriggerGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ConfirmRetryDelay = TimeSpan.FromSeconds(30);
     private const int MaxConfirmAttempts = 10;
+    private static readonly TimeSpan SendRetryDelay = TimeSpan.FromMinutes(1);
+    private const int MaxSendAttempts = 5;
 
     private readonly object _gate = new();
     private readonly ICodexAppSender _sender;
@@ -99,6 +101,7 @@ public sealed class AutoSendService
     private DateTimeOffset _target;
     private DateTimeOffset? _baselineWeeklyResetAt;
     private int _confirmAttempts;
+    private int _sendAttempts;
     private AutoSendOutcome _outcome;
     private DateTimeOffset? _outcomeAt;
     private string? _outcomeDetail;
@@ -268,6 +271,7 @@ public sealed class AutoSendService
             _target = resetAt;
             _baselineWeeklyResetAt = snapshot.Secondary?.ResetAt;
             _confirmAttempts = 0;
+            _sendAttempts = 0;
             _fireClaimed = false;
             _outcome = AutoSendOutcome.None;
             _outcomeAt = null;
@@ -493,7 +497,11 @@ public sealed class AutoSendService
         catch (Exception ex)
         {
             Log.Warning(ex, "Auto-send sender threw");
-            FinishLocked(AutoSendOutcome.SendFailed, ex.Message);
+            if (!TryScheduleSendRetry(AutoSendOutcome.SendFailed, ex.Message))
+            {
+                Log.Information($"Auto-send finished: {AutoSendOutcome.SendFailed} ({ex.Message})");
+                FinishLocked(AutoSendOutcome.SendFailed, ex.Message);
+            }
             return;
         }
 
@@ -506,8 +514,54 @@ public sealed class AutoSendService
             _ => AutoSendOutcome.SendFailed,
         };
 
+        // Transient send failures (missing window, missing/disabled button, invoke failure)
+        // retry after SendRetryDelay instead of killing the whole arm; Sent/EmptyPrompt/
+        // SkippedWeekly are terminal. EmptyPrompt is a correct skip — retrying would spam.
+        if (IsRetryableSendOutcome(outcome))
+        {
+            if (TryScheduleSendRetry(outcome, detail))
+                return;
+        }
+        else if (outcome == AutoSendOutcome.Sent)
+        {
+            lock (_gate)
+            {
+                _sendAttempts = 0;
+            }
+        }
+
         Log.Information($"Auto-send finished: {outcome} ({detail})");
         FinishLocked(outcome, detail);
+    }
+
+    private static bool IsRetryableSendOutcome(AutoSendOutcome outcome)
+        => outcome is AutoSendOutcome.NoWindow or AutoSendOutcome.ButtonNotFound or AutoSendOutcome.SendFailed;
+
+    /// <summary>Re-arms for a send retry when attempts remain. Returns false when the budget is
+    /// exhausted (caller finishes terminally). A Disarm during the wait cancels the timer; the
+    /// state re-check under the gate keeps a stale retry from sending.</summary>
+    private bool TryScheduleSendRetry(AutoSendOutcome outcome, string? detail)
+    {
+        int attempt;
+        lock (_gate)
+        {
+            if (_state != AutoSendState.Confirming)
+                return true; // stood down (Disarm/Finish revoked the fire); nothing more to do
+
+            _sendAttempts++;
+            if (_sendAttempts >= MaxSendAttempts)
+                return false;
+
+            attempt = _sendAttempts;
+            _state = AutoSendState.Armed;
+            _fireClaimed = false;
+        }
+
+        Log.Information($"Auto-send: send failed ({outcome}), retrying in 1 min (attempt {attempt}/{MaxSendAttempts})");
+        // The existing min-delay floor handles the already-passed target (target+grace < now).
+        RescheduleTrigger(minDelay: SendRetryDelay);
+        PublishStatus();
+        return true;
     }
 
     /// <summary>Weekly veto: the weekly window observed now advanced past the armed baseline, meaning

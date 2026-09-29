@@ -390,15 +390,17 @@ namespace CodexQuota.Controls
                     rows.Add(new WidgetUsageRow("Credits", 0, FormatCreditsValue(cost), HasBar: false));
                 }
             }
-            // Reset credits share the flyout panel's count wording (Ui.ResetCreditCountOne/Count)
-            // with no expiry suffix.
+            // Reset credits share the flyout panel's count wording (Ui.ResetCreditCountOne/Count);
+            // the nearest expiry rides along as the row's reset countdown so both surfaces agree.
             if (usage.ResetCredits is { AvailableCount: > 0 } resetCredits)
             {
                 rows.Add(new WidgetUsageRow(
                     "Resets",
                     0,
                     string.Empty,
+                    CountdownFormat.Format(resetCredits.EarliestExpiresAt),
                     HasBar: false,
+                    ResetAt: resetCredits.EarliestExpiresAt,
                     LeadingCount: resetCredits.AvailableCount));
             }
             rows.AddRange(usage.ExtraRateWindows.Select(w => new WidgetUsageRow(

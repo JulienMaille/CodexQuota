@@ -568,6 +568,12 @@ namespace CodexQuota.Controls
             };
             if (LookupBrush("TextFillColorSecondaryBrush") is { } creditsSecondary)
                 line.Foreground = creditsSecondary;
+            if (resetCredits.EarliestExpiresAt is { } expires)
+            {
+                line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
+                    ? $" - {AppStrings.Format("Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalTime(expires))}"
+                    : $" - {AppStrings.Format("Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
+            }
             rows.Add(line);
         }
 

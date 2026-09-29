@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using CodexQuota.Services;
 using CodexQuota.Usage;
@@ -19,12 +20,19 @@ public class AutoSendServiceTests
         public SendPromptResult Result = SendPromptResult.Sent;
         public string Detail = string.Empty;
         public int InvokeCount;
+        public readonly Queue<SendPromptResult> Sequence = new();
+        public bool ThrowOnce;
 
         public SendPromptResult TrySend(out string detail)
         {
             InvokeCount++;
+            if (ThrowOnce)
+            {
+                ThrowOnce = false;
+                throw new InvalidOperationException("boom");
+            }
             detail = Detail;
-            return Result;
+            return Sequence.Count > 0 ? Sequence.Dequeue() : Result;
         }
     }
 
@@ -40,11 +48,13 @@ public class AutoSendServiceTests
     private sealed class ManualScheduler : IAutoSendScheduler
     {
         public TimeSpan? LastDelay;
+        public int ScheduleCount;
         private Action? _pending;
 
         public void Schedule(TimeSpan delay, Action callback)
         {
             LastDelay = delay;
+            ScheduleCount++;
             _pending = callback;
         }
 
@@ -286,7 +296,7 @@ public class AutoSendServiceTests
     }
 
     [Fact]
-    public async Task MissingWindowSurfacesFailureAndDisarms()
+    public async Task MissingWindowRetriesAfterOneMinute()
     {
         var h = new Harness();
         h.Sender.Result = SendPromptResult.NoWindow;
@@ -294,11 +304,153 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
+        Assert.Equal(1, h.Scheduler.ScheduleCount);
+
+        // Fire past the target+grace so the retry anchors to the 1-minute floor.
+        h.Now = ResetAt.AddSeconds(15);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
         h.Scheduler.Fire();
 
-        await WaitForOutcome(service, AutoSendOutcome.NoWindow);
+        await WaitUntil(() => h.Sender.InvokeCount == 1);
+        await WaitUntil(() => h.Scheduler.ScheduleCount == 2);
+
+        // Retryable failure must NOT disarm: stays armed, outcome untouched, timer re-armed.
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+        Assert.Equal(AutoSendOutcome.None, service.Status.Outcome);
+        Assert.Equal(TimeSpan.FromMinutes(1), h.Scheduler.LastDelay);
+        Assert.True(h.Store.Armed);
+    }
+
+    [Fact]
+    public async Task ButtonNotFoundThenSentSucceeds()
+    {
+        var h = new Harness();
+        h.Sender.Sequence.Enqueue(SendPromptResult.ButtonNotFound);
+        h.Sender.Sequence.Enqueue(SendPromptResult.Sent);
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        h.Now = ResetAt.AddSeconds(15);
+        h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
+
+        h.Scheduler.Fire();
+        await WaitUntil(() => h.Sender.InvokeCount == 1);
+        await WaitUntil(() => h.Scheduler.ScheduleCount == 2);
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+        Assert.Equal(TimeSpan.FromMinutes(1), h.Scheduler.LastDelay);
+
+        // Second attempt finds the button and sends.
+        h.Scheduler.Fire();
+        await WaitForOutcome(service, AutoSendOutcome.Sent);
+        Assert.Equal(2, h.Sender.InvokeCount);
         Assert.False(h.Store.Armed);
+        Assert.Equal(ResetAt.UtcTicks, h.Store.LastFiredResetAtUtcTicks);
+    }
+
+    [Fact]
+    public async Task SendFailureExhaustsAttemptsThenFinishesTerminally()
+    {
+        var h = new Harness();
+        h.Sender.Result = SendPromptResult.NoWindow;
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        h.Now = ResetAt.AddSeconds(15);
+        h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
+
+        // MaxSendAttempts (5) failures: first four re-arm, the fifth goes terminal.
+        for (int i = 1; i <= 5; i++)
+        {
+            h.Scheduler.Fire();
+            await WaitUntil(() => h.Sender.InvokeCount == i);
+            if (i < 5)
+                await WaitUntil(() => h.Scheduler.ScheduleCount == 1 + i);
+        }
+
+        await WaitForOutcome(service, AutoSendOutcome.NoWindow);
+        Assert.Equal(5, h.Sender.InvokeCount);
+        Assert.Equal(AutoSendState.Idle, service.Status.State);
+        Assert.False(h.Store.Armed);
+        Assert.Equal(ResetAt.UtcTicks, h.Store.LastFiredResetAtUtcTicks);
+    }
+
+    [Fact]
+    public async Task FailedInvokeRetriesThenSucceeds()
+    {
+        var h = new Harness();
+        h.Sender.Sequence.Enqueue(SendPromptResult.Failed);
+        h.Sender.Sequence.Enqueue(SendPromptResult.Sent);
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        h.Now = ResetAt.AddSeconds(15);
+        h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
+
+        h.Scheduler.Fire();
+        await WaitUntil(() => h.Sender.InvokeCount == 1);
+        await WaitUntil(() => h.Scheduler.ScheduleCount == 2);
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+
+        h.Scheduler.Fire();
+        await WaitForOutcome(service, AutoSendOutcome.Sent);
+        Assert.Equal(2, h.Sender.InvokeCount);
+    }
+
+    [Fact]
+    public async Task ThrowingSenderRetriesAfterOneMinute()
+    {
+        var h = new Harness();
+        h.Sender.ThrowOnce = true;
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        h.Now = ResetAt.AddSeconds(15);
+        h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
+
+        h.Scheduler.Fire();
+        await WaitUntil(() => h.Sender.InvokeCount == 1);
+        await WaitUntil(() => h.Scheduler.ScheduleCount == 2);
+
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+        Assert.Equal(TimeSpan.FromMinutes(1), h.Scheduler.LastDelay);
+        Assert.True(h.Store.Armed);
+
+        // The sender recovers on the retry.
+        h.Scheduler.Fire();
+        await WaitForOutcome(service, AutoSendOutcome.Sent);
+        Assert.Equal(2, h.Sender.InvokeCount);
+    }
+
+    [Fact]
+    public async Task DisarmDuringSendRetryCancels()
+    {
+        var h = new Harness();
+        h.Sender.Result = SendPromptResult.NoWindow;
+        var service = h.Create(ResetAt.AddSeconds(-100));
+        h.Snapshot = SessionSnapshot(ResetAt);
+
+        service.Arm(AutoSendMode.Always);
+        h.Now = ResetAt.AddSeconds(15);
+        h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
+
+        h.Scheduler.Fire();
+        await WaitUntil(() => h.Sender.InvokeCount == 1);
+        await WaitUntil(() => h.Scheduler.ScheduleCount == 2);
+        Assert.Equal(AutoSendState.Armed, service.Status.State);
+
+        service.Disarm();
+        Assert.Equal(AutoSendState.Idle, service.Status.State);
+        Assert.Equal(AutoSendOutcome.None, service.Status.Outcome);
+
+        // The cancelled retry timer must not fire again.
+        h.Scheduler.Fire();
+        await Task.Delay(100);
+        Assert.Equal(1, h.Sender.InvokeCount);
+        Assert.Equal(AutoSendState.Idle, service.Status.State);
     }
 
     [Fact]
