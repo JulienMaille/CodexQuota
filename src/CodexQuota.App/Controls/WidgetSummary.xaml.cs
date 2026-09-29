@@ -65,7 +65,7 @@ namespace CodexQuota.Controls
         // Threshold-line brush for the bars, re-derived on every taskbar theme change. The line runs
         // counter to the text colors: the track inverts with the taskbar theme (dark on a light
         // taskbar, light on a dark one), so a light line on light and dark on dark keeps it visible.
-        private SolidColorBrush _markerBrush = new SolidColorBrush(Colors.White);
+        private SolidColorBrush _markerBrush = new SolidColorBrush(new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 });
         private List<WidgetUsageRow> _rows = new();
         private UsageResult? _lastResult;
         private string? _lastRenderSignature;
@@ -215,9 +215,9 @@ namespace CodexQuota.Controls
         private void ApplyTaskbarForeground()
         {
             bool light = Interop.SystemInfos.IsSystemLightThemeUsed() == true;
-            Foreground = new SolidColorBrush(light ? Color.FromArgb(255, 28, 28, 28) : Colors.White);
+            Foreground = new SolidColorBrush(light ? Color.FromArgb(255, 28, 28, 28) : new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 });
             var track = new SolidColorBrush(light ? Color.FromArgb(90, 28, 28, 28) : Color.FromArgb(110, 255, 255, 255));
-            _markerBrush = new SolidColorBrush(light ? Colors.White : Colors.Black);
+            _markerBrush = new SolidColorBrush(light ? new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 } : new Windows.UI.Color { A = 255, R = 0, G = 0, B = 0 });
 
             foreach (var row in _renderedRows)
             {
@@ -383,22 +383,22 @@ namespace CodexQuota.Controls
                     rows.Add(new WidgetUsageRow(
                         "Credits",
                         RemainingPercent(Math.Clamp(creditUsed / creditLimit * 100, 0, 100)),
-                        cost.Display));
+                        FormatCreditsValue(cost)));
                 }
                 else
                 {
-                    rows.Add(new WidgetUsageRow("Credits", 0, cost.Display, HasBar: false));
+                    rows.Add(new WidgetUsageRow("Credits", 0, FormatCreditsValue(cost), HasBar: false));
                 }
             }
+            // Reset credits share the flyout panel's count wording (Ui.ResetCreditCountOne/Count)
+            // with no expiry suffix.
             if (usage.ResetCredits is { AvailableCount: > 0 } resetCredits)
             {
                 rows.Add(new WidgetUsageRow(
                     "Resets",
                     0,
                     string.Empty,
-                    CountdownFormat.Format(resetCredits.EarliestExpiresAt),
                     HasBar: false,
-                    ResetAt: resetCredits.EarliestExpiresAt,
                     LeadingCount: resetCredits.AvailableCount));
             }
             rows.AddRange(usage.ExtraRateWindows.Select(w => new WidgetUsageRow(
@@ -444,6 +444,18 @@ namespace CodexQuota.Controls
 
         private static string FormatCreditCount(double value)
             => value.ToString(value % 1 == 0 ? "N0" : "N1", CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// Number-only credits value for the "Credits" row: the label already names the unit, so the
+        /// "credits" suffix in <see cref="CostSnapshot.Display"/> would repeat it ("Credits |
+        /// 0.00 credits"). Money currencies keep their Display.
+        /// </summary>
+        private static string FormatCreditsValue(CostSnapshot cost)
+            => string.Equals(cost.Currency, "credits", StringComparison.OrdinalIgnoreCase)
+                ? cost.Limit is { } limit && limit > 0
+                    ? $"{FormatCreditCount(cost.Amount)}/{FormatCreditCount(limit)}"
+                    : FormatCreditCount(cost.Amount)
+                : cost.Display;
 
         /// <summary>Compact "used / limit" money string for a spend-limit meter, e.g. "$9.27/$100".
         /// Space-free to fit the widget's narrow value column.</summary>
@@ -540,12 +552,13 @@ namespace CodexQuota.Controls
 
         private static string CountPrefix(WidgetUsageRow row)
         {
-            string label = AppStrings.LocalizeLabel(row.Label);
-            // Resets row shows the count first ("3 Resets") so the trailing value column isn't
-            // mistaken for the count ("Resets 15d 3" reads backwards).
+            // Resets row shares the flyout panel's count wording ("1 reset available" /
+            // "3 resets available") via the same AppStrings keys.
             if (row.LeadingCount is { } count)
-                return $"{count.ToString("N0", CultureInfo.CurrentUICulture)} {label}";
-            return label;
+                return AppStrings.Format(
+                    count == 1 ? "Ui.ResetCreditCountOne" : "Ui.ResetCreditsCount",
+                    count.ToString("N0", CultureInfo.CurrentUICulture));
+            return AppStrings.LocalizeLabel(row.Label);
         }
 
         private static double MeasureTextWidth(string text, int fontSize = WidgetFontSize)
@@ -578,7 +591,7 @@ namespace CodexQuota.Controls
                 <= 120 => "AccentFillColorSecondaryBrush",
                 _ => "TextFillColorSecondaryBrush",
             };
-            return LookupBrush(key) ?? new SolidColorBrush(Colors.Gray);
+            return LookupBrush(key) ?? new SolidColorBrush(new Windows.UI.Color { A = 255, R = 128, G = 128, B = 128 });
         }
 
         private static int? TryParseResetMinutes(string resetDescription)
@@ -846,7 +859,7 @@ namespace CodexQuota.Controls
             var track = new Border { CornerRadius = new CornerRadius(2), Opacity = 0.28 };
             var bar = new Border
             {
-                Background = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
+                Background = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(new Windows.UI.Color { A = 255, R = 128, G = 128, B = 128 }),
                 CornerRadius = new CornerRadius(2),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Width = 0,

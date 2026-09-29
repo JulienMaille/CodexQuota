@@ -213,7 +213,7 @@ namespace CodexQuota.Taskbar
             hostContent = new Microsoft.UI.Xaml.Controls.Grid
             {
                 Children = { summaryPanel },
-                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Colors.Transparent),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(new Windows.UI.Color { A = 0, R = 0, G = 0, B = 0 }),
             };
             host.Content = hostContent;
             ResizeWidgetHost(DefaultWidgetHostWidth);
@@ -637,7 +637,7 @@ namespace CodexQuota.Taskbar
             {
                 separatorBrushIsLight = light;
                 separatorBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                    light ? Windows.UI.Color.FromArgb(255, 28, 28, 28) : Colors.White);
+                    light ? Windows.UI.Color.FromArgb(255, 28, 28, 28) : new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 });
             }
 
             return separatorBrush;

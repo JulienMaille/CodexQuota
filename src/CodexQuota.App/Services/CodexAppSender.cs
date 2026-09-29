@@ -120,47 +120,77 @@ public sealed class CodexAppSender : ICodexAppSender
                 if (probe.InputsEmpty != false)
                     continue; // empty or unreadable input on this window: never invoke here, try the next window.
 
-                if (probe.Button is not null)
+                var sendCandidates = probe.SendCandidates.Count > 0
+                    ? probe.SendCandidates
+                    : (probe.Button is not null ? new List<IUIAutomationElement> { probe.Button } : new List<IUIAutomationElement>());
+                if (sendCandidates.Count > 0)
                 {
-                    // P1: the first bad button must not veto the remaining windows — skip with a
-                    // diagnostic and keep probing. Only invoke enabled, on-screen buttons.
-                    // Each window's probe+invoke is isolated: a COMException from Invoke
-                    // (e.g. UIA_E_ELEMENTNOTENABLED 0x80040200 when Chromium disables the
+                    // P1: one disabled pick must not veto the window — a disabled decoy (menu/popover)
+                    // can shadow the real composer Send. Iterate rank-ordered candidates; only invoke
+                    // enabled, on-screen buttons. Extra diag lines are capped to a single aggregate
+                    // note per window. Each window's probe+invoke is isolated: a COMException from
+                    // Invoke (e.g. UIA_E_ELEMENTNOTENABLED 0x80040200 when Chromium disables the
                     // button between probe and invoke) must not abort remaining windows.
-                    string buttonName = SafeName(probe.Button);
-                    try
+                    int notActionable = 0;
+                    string firstSkippedName = string.Empty;
+                    string firstSkipReason = string.Empty;
+                    int noInvoke = 0;
+                    string firstNoInvokeName = string.Empty;
+                    bool windowDone = false;
+                    foreach (var candidate in sendCandidates)
                     {
-                        // Re-validate immediately before GetCurrentPattern (TOCTOU: the
-                        // Chromium tree can disable the button between ProbeOneWindow and here).
-                        if (!IsActionable(probe.Button, out string skipReason))
+                        string buttonName = SafeName(candidate);
+                        try
                         {
-                            perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' not actionable ({skipReason})");
-                            continue;
-                        }
+                            // Re-validate immediately before GetCurrentPattern (TOCTOU: the
+                            // Chromium tree can disable the button between ProbeOneWindow and here).
+                            if (!IsActionable(candidate, out string skipReason))
+                            {
+                                if (notActionable == 0)
+                                {
+                                    firstSkippedName = buttonName;
+                                    firstSkipReason = skipReason;
+                                }
+                                notActionable++;
+                                continue; // try the next same-name candidate in this window.
+                            }
 
-                        if (probe.Button.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
+                            if (candidate.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
+                            {
+                                if (noInvoke == 0)
+                                    firstNoInvokeName = buttonName;
+                                noInvoke++;
+                                continue; // try the next candidate in this window.
+                            }
+
+                            invoke.Invoke();
+                            Log.Information("Codex auto-send: send button invoked");
+                            return SendPromptResult.Sent;
+                        }
+                        catch (COMException invokeEx)
                         {
-                            perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' does not support Invoke");
-                            continue;
+                            string hr = $"0x{(uint)invokeEx.HResult:X8}";
+                            perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' invoke failed: {hr} {invokeEx.Message}");
+                            Log.Warning(invokeEx, $"Codex auto-send: invoke failed on window '{title}' (hwnd=0x{hwnd.ToInt64():X}) button '{buttonName}' hr={hr}");
+                            windowDone = true;
+                            break; // invoke failure stays per-window isolated: next window.
                         }
+                        catch (Exception invokeEx)
+                        {
+                            perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' invoke failed: {invokeEx.Message}");
+                            Log.Warning(invokeEx, $"Codex auto-send: invoke failed on window '{title}' (hwnd=0x{hwnd.ToInt64():X}) button '{buttonName}'");
+                            windowDone = true;
+                            break; // next window.
+                        }
+                    }
 
-                        invoke.Invoke();
-                        Log.Information("Codex auto-send: send button invoked");
-                        return SendPromptResult.Sent;
-                    }
-                    catch (COMException invokeEx)
-                    {
-                        string hr = $"0x{(uint)invokeEx.HResult:X8}";
-                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' invoke failed: {hr} {invokeEx.Message}");
-                        Log.Warning(invokeEx, $"Codex auto-send: invoke failed on window '{title}' (hwnd=0x{hwnd.ToInt64():X}) button '{buttonName}' hr={hr}");
+                    if (windowDone)
                         continue;
-                    }
-                    catch (Exception invokeEx)
-                    {
-                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: send button '{buttonName}' invoke failed: {invokeEx.Message}");
-                        Log.Warning(invokeEx, $"Codex auto-send: invoke failed on window '{title}' (hwnd=0x{hwnd.ToInt64():X}) button '{buttonName}'");
-                        continue;
-                    }
+                    if (notActionable > 0 && notActionable == sendCandidates.Count)
+                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: all {sendCandidates.Count} send candidates not actionable (first: '{firstSkippedName}' {firstSkipReason})");
+                    else if (notActionable > 0 || noInvoke > 0)
+                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' skip: {notActionable + noInvoke} of {sendCandidates.Count} send candidates skipped (not actionable: {notActionable}{(notActionable > 0 ? $" first: '{firstSkippedName}' {firstSkipReason}" : string.Empty)}; no Invoke: {noInvoke}{(noInvoke > 0 ? $" first: '{firstNoInvokeName}'" : string.Empty)})");
+                    continue;
                 }
             }
 
@@ -263,23 +293,50 @@ public sealed class CodexAppSender : ICodexAppSender
                 if (probe.InputsEmpty != false)
                     continue; // a real send would skip this window (empty or unreadable); keep probing the others.
 
-                if (probe.Button is not null)
+                var detectCandidates = probe.SendCandidates.Count > 0
+                    ? probe.SendCandidates
+                    : (probe.Button is not null ? new List<IUIAutomationElement> { probe.Button } : new List<IUIAutomationElement>());
+                if (detectCandidates.Count > 0)
                 {
-                    // Parity check with TrySend (which would report Failed here) — observed only,
-                    // never invoked.
-                    bool invokeSupported;
-                    try { invokeSupported = probe.Button.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is IUIAutomationInvokePattern; }
-                    catch { invokeSupported = false; }
-
-                    if (!invokeSupported)
+                    // Never Invoke, never touch foreground — observed only. An actionable
+                    // candidate must exist for Found; all-disabled windows keep probing the
+                    // remaining windows (a disabled decoy must not read as Found).
+                    int disabledHere = 0;
+                    string firstDisabledReason = string.Empty;
+                    string firstDisabledName = string.Empty;
+                    foreach (var candidate in detectCandidates)
                     {
-                        detail = $"send button '{SafeName(probe.Button)}' in '{title}' does not support Invoke (windows={candidates.Count}; {string.Join("; ", perWindowDiagnostics)})";
-                        return SendButtonProbeResult.Failed;
+                        if (!IsActionable(candidate, out string actionableReason))
+                        {
+                            if (disabledHere == 0)
+                            {
+                                firstDisabledName = SafeName(candidate);
+                                firstDisabledReason = actionableReason;
+                            }
+                            disabledHere++;
+                            continue;
+                        }
+
+                        // Parity check with TrySend (which would report Failed here) — observed
+                        // only, never invoked.
+                        bool invokeSupported;
+                        try { invokeSupported = candidate.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is IUIAutomationInvokePattern; }
+                        catch { invokeSupported = false; }
+
+                        if (!invokeSupported)
+                        {
+                            detail = $"send button '{SafeName(candidate)}' in '{title}' does not support Invoke (windows={candidates.Count}; {string.Join("; ", perWindowDiagnostics)})";
+                            return SendButtonProbeResult.Failed;
+                        }
+
+                        foundTitle = title;
+                        detail = $"send button '{SafeName(candidate)}' found (buttons={probe.CountText}; windows={candidates.Count}; input={probe.InputState}; {string.Join("; ", perWindowDiagnostics)})";
+                        return SendButtonProbeResult.Found;
                     }
 
-                    foundTitle = title;
-                    detail = $"send button '{SafeName(probe.Button)}' found (buttons={probe.CountText}; windows={candidates.Count}; input={probe.InputState}; {string.Join("; ", perWindowDiagnostics)})";
-                    return SendButtonProbeResult.Found;
+                    if (disabledHere > 0)
+                        perWindowDiagnostics.Add($"win{i} hwnd=0x{hwnd.ToInt64():X} title='{title}' note: found {detectCandidates.Count} send candidate(s) but disabled (first: '{firstDisabledName}' {firstDisabledReason})");
+                    continue;
                 }
             }
 
@@ -372,6 +429,7 @@ public sealed class CodexAppSender : ICodexAppSender
         public bool HasElement { get; init; }
         public bool? InputsEmpty { get; init; }
         public IUIAutomationElement? Button { get; init; }
+        public List<IUIAutomationElement> SendCandidates { get; init; }
         public List<string> ButtonNames { get; init; }
         public int TotalButtons { get; init; }
         public string CountText { get; init; }
@@ -384,6 +442,7 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             HasElement = false,
             ButtonNames = new List<string>(),
+            SendCandidates = new List<IUIAutomationElement>(),
             TotalButtons = int.MaxValue,
             CountText = FormatButtonCount(int.MaxValue),
             InputState = string.Empty,
@@ -427,16 +486,16 @@ public sealed class CodexAppSender : ICodexAppSender
         // Collect button names for diagnostics (cap ~20) and try the Send match.
         List<string> buttonNames;
         int totalButtons;
-        IUIAutomationElement? button;
+        List<IUIAutomationElement> sendCandidates;
         try
         {
-            button = FindSendButton(root, out buttonNames, out totalButtons);
+            sendCandidates = FindSendButtons(root, out buttonNames, out totalButtons);
         }
         catch
         {
             buttonNames = new List<string>();
             totalButtons = int.MaxValue;
-            button = null;
+            sendCandidates = new List<IUIAutomationElement>();
         }
 
         string countText = FormatButtonCount(totalButtons);
@@ -445,7 +504,8 @@ public sealed class CodexAppSender : ICodexAppSender
         {
             HasElement = true,
             InputsEmpty = inputsEmpty,
-            Button = button,
+            Button = sendCandidates.Count > 0 ? sendCandidates[0] : null,
+            SendCandidates = sendCandidates,
             ButtonNames = buttonNames,
             TotalButtons = totalButtons,
             CountText = countText,
@@ -635,54 +695,87 @@ public sealed class CodexAppSender : ICodexAppSender
                 return $"; collapsed-tree retry on '{title}': input empty";
             }
 
-            var button = FindSendButton(root, out var buttonNames, out int totalButtons);
+            var retryButtons = FindSendButtons(root, out var buttonNames, out int totalButtons);
             string names = buttonNames.Count == 0
                 ? "none"
                 : string.Join(", ", buttonNames);
             string countText = FormatButtonCount(totalButtons);
-            if (button is null)
+            if (retryButtons.Count == 0)
                 return $"; collapsed-tree retry on '{title}': buttons={countText} [{names}]";
 
-            // P1 mirror of the fast path, isolated per window: a COMException from Invoke
-            // (e.g. UIA_E_ELEMENTNOTENABLED 0x80040200 when Chromium disables the button
-            // between probe and invoke) stays ButtonNotFound with a diagnostic note — never
-            // Failed — so the caller falls through to aggregate diagnostics.
-            // Only truly unexpected errors (outside the invoke try below) reach the outer
-            // catch, which likewise keeps ButtonNotFound semantics.
-            string retryButtonName = SafeName(button);
-            try
+            // P1 mirror of the fast path, isolated per candidate: iterate the rank-ordered
+            // candidates so a disabled decoy does not veto the real composer Send. A
+            // COMException from Invoke (e.g. UIA_E_ELEMENTNOTENABLED 0x80040200 when Chromium
+            // disables the button between probe and invoke) stays ButtonNotFound with a
+            // diagnostic note — never Failed — so the caller falls through to aggregate
+            // diagnostics. Only truly unexpected errors (outside the invoke try below) reach
+            // the outer catch, which likewise keeps ButtonNotFound semantics.
+            int retryNotActionable = 0;
+            string retryFirstSkippedName = string.Empty;
+            string retryFirstSkip = string.Empty;
+            int retryNoInvoke = 0;
+            string retryFirstNoInvokeName = string.Empty;
+            string? retryLastInvokeError = null;
+            string retryLastInvokeName = string.Empty;
+            foreach (var retryButton in retryButtons)
             {
-                // Re-validate immediately before GetCurrentPattern (TOCTOU: the Chromium
-                // tree can disable the button between FindSendButton and here).
-                if (!IsActionable(button, out string retrySkip))
-                    return $"; collapsed-tree retry on '{title}': send button '{retryButtonName}' not actionable ({retrySkip}); buttons={countText} [{names}]";
-
-                if (button.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
+                string retryButtonName = SafeName(retryButton);
+                try
                 {
-                    // P1: an Invoke-less button must not read as a hard failure — keep the
-                    // ButtonNotFound aggregate semantics so other windows stay eligible.
-                    return $"; collapsed-tree retry on '{title}': send button '{retryButtonName}' does not support Invoke; buttons={countText} [{names}]";
+                    // Re-validate immediately before GetCurrentPattern (TOCTOU: the Chromium
+                    // tree can disable the button between FindSendButtons and here).
+                    if (!IsActionable(retryButton, out string retrySkip))
+                    {
+                        if (retryNotActionable == 0)
+                        {
+                            retryFirstSkippedName = retryButtonName;
+                            retryFirstSkip = retrySkip;
+                        }
+                        retryNotActionable++;
+                        continue; // try the next candidate.
+                    }
+
+                    if (retryButton.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId) is not IUIAutomationInvokePattern invoke)
+                    {
+                        // P1: an Invoke-less button must not read as a hard failure — keep the
+                        // ButtonNotFound aggregate semantics so other windows stay eligible.
+                        if (retryNoInvoke == 0)
+                            retryFirstNoInvokeName = retryButtonName;
+                        retryNoInvoke++;
+                        continue; // try the next candidate.
+                    }
+
+                    invoke.Invoke();
+                    Log.Information("Codex auto-send: send button invoked after foreground realization");
+                    result = SendPromptResult.Sent;
+                    return $"; collapsed-tree retry on '{title}': sent";
                 }
+                catch (COMException invokeEx)
+                {
+                    // 0x80040200 (UIA_E_ELEMENTNOTENABLED) / 0x80040201 and friends read as
+                    // not-actionable/skip, not Failed: result stays ButtonNotFound.
+                    string hr = $"0x{(uint)invokeEx.HResult:X8}";
+                    Log.Warning(invokeEx, $"Codex auto-send: retry invoke failed on window '{title}' button '{retryButtonName}' hr={hr}");
+                    retryLastInvokeError = $"{hr} {invokeEx.Message}";
+                    retryLastInvokeName = retryButtonName;
+                    continue; // try the next candidate before giving up.
+                }
+                catch (Exception invokeEx)
+                {
+                    Log.Warning(invokeEx, $"Codex auto-send: retry invoke failed on window '{title}' button '{retryButtonName}'");
+                    retryLastInvokeError = invokeEx.Message;
+                    retryLastInvokeName = retryButtonName;
+                    continue; // try the next candidate.
+                }
+            }
 
-                invoke.Invoke();
-            }
-            catch (COMException invokeEx)
-            {
-                // 0x80040200 (UIA_E_ELEMENTNOTENABLED) / 0x80040201 and friends read as
-                // not-actionable/skip, not Failed: result stays ButtonNotFound.
-                string hr = $"0x{(uint)invokeEx.HResult:X8}";
-                Log.Warning(invokeEx, $"Codex auto-send: retry invoke failed on window '{title}' button '{retryButtonName}' hr={hr}");
-                return $"; collapsed-tree retry on '{title}': send button '{retryButtonName}' invoke failed: {hr} {invokeEx.Message}; buttons={countText} [{names}]";
-            }
-            catch (Exception invokeEx)
-            {
-                Log.Warning(invokeEx, $"Codex auto-send: retry invoke failed on window '{title}' button '{retryButtonName}'");
-                return $"; collapsed-tree retry on '{title}': send button '{retryButtonName}' invoke failed: {invokeEx.Message}; buttons={countText} [{names}]";
-            }
-
-            Log.Information("Codex auto-send: send button invoked after foreground realization");
-            result = SendPromptResult.Sent;
-            return $"; collapsed-tree retry on '{title}': sent";
+            if (retryLastInvokeError is not null)
+                return $"; collapsed-tree retry on '{title}': send button '{retryLastInvokeName}' invoke failed: {retryLastInvokeError}; buttons={countText} [{names}]";
+            if (retryNotActionable > 0 && retryNotActionable + retryNoInvoke == retryButtons.Count && retryNoInvoke == 0)
+                return $"; collapsed-tree retry on '{title}': all {retryButtons.Count} send candidates not actionable (first: '{retryFirstSkippedName}' {retryFirstSkip}); buttons={countText} [{names}]";
+            if (retryNoInvoke > 0 && retryNotActionable == 0 && retryNoInvoke == retryButtons.Count)
+                return $"; collapsed-tree retry on '{title}': send button '{retryFirstNoInvokeName}' does not support Invoke; buttons={countText} [{names}]";
+            return $"; collapsed-tree retry on '{title}': {retryNotActionable + retryNoInvoke} of {retryButtons.Count} send candidates skipped (not actionable: {retryNotActionable}; no Invoke: {retryNoInvoke}); buttons={countText} [{names}]";
         }
         catch (Exception ex)
         {
@@ -863,13 +956,23 @@ public sealed class CodexAppSender : ICodexAppSender
 
     private IUIAutomationElement? FindSendButton(IUIAutomationElement root, out List<string> buttonNames, out int totalButtons)
     {
+        var all = FindSendButtons(root, out buttonNames, out totalButtons);
+        return all.Count == 0 ? null : all[0];
+    }
+
+    /// <summary>Returns ALL Send-button matches ordered by the existing rank (exact-name index,
+    /// then fragment index, composer-hinted first) with tree-order tie-break. Callers iterate in
+    /// rank order and skip non-actionable picks (a disabled decoy in a menu/popover can shadow
+    /// the real composer Send) instead of letting the first pick veto the window.</summary>
+    private List<IUIAutomationElement> FindSendButtons(IUIAutomationElement root, out List<string> buttonNames, out int totalButtons)
+    {
         buttonNames = new List<string>();
         totalButtons = 0;
         var buttons = root.FindAll(
             TreeScope.TreeScope_Descendants,
             GetAutomation().CreatePropertyCondition(UIA_PropertyIds.UIA_ControlTypePropertyId, UIA_ControlTypeIds.UIA_ButtonControlTypeId));
         if (buttons is null || buttons.Length == 0)
-            return null;
+            return new List<IUIAutomationElement>();
 
         totalButtons = buttons.Length;
 
@@ -884,12 +987,13 @@ public sealed class CodexAppSender : ICodexAppSender
                 buttonNames.Add(string.IsNullOrEmpty(name) ? $"id='{automationId}'" : name);
         }
 
-        // Single pass: rank each candidate by the original pass order (per-name exact hinted/plain,
-        // then per-fragment hinted/plain), keeping the minimum rank with tree-order tie-break.
-        IUIAutomationElement? best = null;
-        int bestRank = int.MaxValue;
-        foreach (var (element, name, automationId) in candidates)
+        // Rank each candidate with the original formula (per-name exact hinted/plain, then
+        // per-fragment hinted/plain) and return ALL matches ordered by rank with tree-order
+        // tie-break (stable sort by rank, tree index).
+        var ranked = new List<(IUIAutomationElement Element, int Rank, int Index)>();
+        for (int i = 0; i < candidates.Count; i++)
         {
+            var (element, name, automationId) = candidates[i];
             bool hinted = IsComposerHinted(name, automationId);
             int rank;
             int exactIndex = Array.FindIndex(SendButtonNameCandidates,
@@ -908,14 +1012,19 @@ public sealed class CodexAppSender : ICodexAppSender
                 rank = SendButtonNameCandidates.Length * 2 + fragmentIndex * 2 + (hinted ? 0 : 1);
             }
 
-            if (rank < bestRank)
-            {
-                bestRank = rank;
-                best = element;
-            }
+            ranked.Add((element, rank, i));
         }
 
-        return best;
+        ranked.Sort((a, b) =>
+        {
+            int c = a.Rank.CompareTo(b.Rank);
+            return c != 0 ? c : a.Index.CompareTo(b.Index);
+        });
+
+        var ordered = new List<IUIAutomationElement>(ranked.Count);
+        foreach (var (element, _, _) in ranked)
+            ordered.Add(element);
+        return ordered;
     }
 
     private static string SafeName(IUIAutomationElement element)

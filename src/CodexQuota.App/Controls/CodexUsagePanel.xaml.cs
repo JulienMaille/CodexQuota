@@ -35,7 +35,7 @@ namespace CodexQuota.Controls
         /// <summary>Raised when the header close button is clicked; the flyout owns hiding.</summary>
         public event Action? CloseRequested;
 
-        private static readonly Brush LogoBrushDark = new SolidColorBrush(Colors.White);
+        private static readonly Brush LogoBrushDark = new SolidColorBrush(new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 });
         private static readonly Brush LogoBrushLight = new SolidColorBrush(Color.FromArgb(255, 28, 28, 28));
 
         private static readonly Uri TokenAnalyticsUri = new("https://chatgpt.com/codex/cloud/settings/analytics");
@@ -224,13 +224,13 @@ namespace CodexQuota.Controls
                         if (cell.Tokens > maxTokens)
                             maxTokens = cell.Tokens;
 
-                var accent = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray);
-                var quiet = LookupBrush("ControlFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Transparent);
+                var accent = LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(new Windows.UI.Color { A = 255, R = 128, G = 128, B = 128 });
+                var quiet = LookupBrush("ControlFillColorDefaultBrush") ?? new SolidColorBrush(new Windows.UI.Color { A = 0, R = 0, G = 0, B = 0 });
                 // Hover outline must read against every fill intensity, including full accent — so it
                 // runs counter to the theme (light line on light app theme), like the bars' threshold
                 // ticks.
                 var hoverOutline = new SolidColorBrush(
-                    CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? Colors.White : Colors.Black);
+                    CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 } : new Windows.UI.Color { A = 255, R = 0, G = 0, B = 0 });
 
                 foreach (var column in columns)
                 {
@@ -568,15 +568,6 @@ namespace CodexQuota.Controls
             };
             if (LookupBrush("TextFillColorSecondaryBrush") is { } creditsSecondary)
                 line.Foreground = creditsSecondary;
-            if (resetCredits.EarliestExpiresAt is { } expires)
-            {
-                // With a single credit there is nothing to disambiguate: the "oldest" qualifier
-                // only earns its space when several credits compete for the nearest expiry.
-                bool single = resetCredits.AvailableCount == 1;
-                line.Text += ResetDateDisplay.IsImminent(expires, DateTimeOffset.UtcNow)
-                    ? $" · {AppStrings.Format(single ? "Ui.ExpiresOn" : "Ui.OldestExpiresOn", ResetDateDisplay.FormatLocalTime(expires))}"
-                    : $" · {AppStrings.Format(single ? "Ui.ExpiresIn" : "Ui.OldestExpiresIn", AppStrings.LocalizeCountdown(CountdownFormat.Format(expires)))}";
-            }
             rows.Add(line);
         }
 
@@ -591,7 +582,7 @@ namespace CodexQuota.Controls
 
             var track = new Border
             {
-                Background = LookupBrush("ControlStrokeColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
+                Background = LookupBrush("ControlStrokeColorDefaultBrush") ?? new SolidColorBrush(new Windows.UI.Color { A = 255, R = 128, G = 128, B = 128 }),
                 CornerRadius = new CornerRadius(2),
             };
             Grid.SetColumnSpan(track, 2);
@@ -604,7 +595,7 @@ namespace CodexQuota.Controls
                 : "AccentFillColorDefaultBrush";
             host.Children.Add(new Border
             {
-                Background = LookupBrush(fillKey) ?? LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(Colors.Gray),
+                Background = LookupBrush(fillKey) ?? LookupBrush("AccentFillColorDefaultBrush") ?? new SolidColorBrush(new Windows.UI.Color { A = 255, R = 128, G = 128, B = 128 }),
                 CornerRadius = new CornerRadius(2),
             });
 
@@ -614,7 +605,7 @@ namespace CodexQuota.Controls
             // dark gets a dark one, so the threshold reads against both the gray track and the
             // accent fill (the old text-gray at 45% sank into whichever surface it crossed).
             var markerBrush = new SolidColorBrush(
-                CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? Colors.White : Colors.Black);
+                CodexQuota.Interop.SystemInfos.IsAppsLightThemeUsed() == true ? new Windows.UI.Color { A = 255, R = 255, G = 255, B = 255 } : new Windows.UI.Color { A = 255, R = 0, G = 0, B = 0 });
             foreach (int threshold in QuotaDisplay.WarningThresholds())
             {
                 var overlay = new Grid();
