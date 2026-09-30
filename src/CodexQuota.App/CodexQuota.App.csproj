@@ -43,8 +43,12 @@
     <TrimmerSingleWarn>true</TrimmerSingleWarn>
     <!-- IL2026 (COM activation, from BuiltInComInteropSupport) is a known limitation of built-in COM
          interop + trimming; the taskbar wiring it feeds is exercised at every boot smoke test, so a
-         silent suppressed line beats a recurring alert. -->
-    <NoWarn>$(NoWarn);IL2026</NoWarn>
+         silent suppressed line beats a recurring alert.
+         IL2104 (per-assembly trim summary): the only assemblies that ever flag it are
+         Microsoft.Windows.SDK.NET and WinRT.Runtime, for IL2081s inside CsWinRT's own ABI.*
+         CCW/RCW fallback tables — unactionable third-party noise. Our own assemblies are
+         trim-clean (they never produce IL2104). -->
+    <NoWarn>$(NoWarn);IL2026;IL2104</NoWarn>
     <!-- Trimming disables built-in COM interop by default (System.Runtime.InteropServices feature
          switch); the taskbar wiring and UIAutomationClient scans are COM-based, so opt back in. -->
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -170,7 +174,11 @@
       <!-- Pruned despite a manifest entry: serves 31 legacy Phone-era classes (PivotAutomationPeer
            et al.) this app never instantiates; render path verified by boot test. -->
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Phone.dll" />
-      <_PruneFiles Include="$(PublishDir)Microsoft.UI.Xaml.Internal.dll" />
+      <!-- NOT pruned: Microsoft.UI.Xaml.dll delay-loads it (microsoft.ui.xaml.internal.dll) from
+           RichTextServices::LsTextFormatter whenever a TextBlock with inlines (e.g. the flyout's
+           Hyperlink) is measured. Deleting it kills the process with a native 0x505
+           (ERROR_DELAY_LOAD_FAILED) on the next render tick after opening the flyout — no managed
+           exception, no log. -->
       <_PruneFiles Include="$(PublishDir)Microsoft.UI.Designer.dll" />
       <!-- Keep Microsoft.ui.xaml.resources.common.dll: the NumberBox spin template ships there. -->
       <_PruneFiles Include="$(PublishDir)DwmSceneI.dll" />
