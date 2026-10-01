@@ -116,7 +116,7 @@ public class AutoSendServiceTests
 
         service.Arm(AutoSendMode.Always);
         Assert.Equal(AutoSendState.Armed, service.Status.State);
-        Assert.Equal(TimeSpan.FromSeconds(110), h.Scheduler.LastDelay);
+        Assert.Equal(TimeSpan.FromSeconds(175), h.Scheduler.LastDelay);
 
         // A mid-wait poll keeps the weekly baseline; the reset lands, then the trigger fires.
         h.Snapshot = SessionSnapshot(ResetAt, weeklyReset: ResetAt.AddHours(-6));
@@ -160,7 +160,7 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        Assert.Equal(TimeSpan.FromSeconds(110), h.Scheduler.LastDelay);
+        Assert.Equal(TimeSpan.FromSeconds(175), h.Scheduler.LastDelay);
 
         // The API slides the session reset forward as traffic flows: a mid-wait poll now reports a
         // later reset. That is not the reset having happened — stay armed, chase the new target.
@@ -307,7 +307,7 @@ public class AutoSendServiceTests
         Assert.Equal(1, h.Scheduler.ScheduleCount);
 
         // Fire past the target+grace so the retry anchors to the 1-minute floor.
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
         h.Scheduler.Fire();
 
@@ -331,7 +331,7 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
 
         h.Scheduler.Fire();
@@ -357,20 +357,20 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
 
-        // MaxSendAttempts (5) failures: first four re-arm, the fifth goes terminal.
-        for (int i = 1; i <= 5; i++)
+        // MaxSendAttempts (8) failures: first seven re-arm, the eighth goes terminal.
+        for (int i = 1; i <= 8; i++)
         {
             h.Scheduler.Fire();
             await WaitUntil(() => h.Sender.InvokeCount == i);
-            if (i < 5)
+            if (i < 8)
                 await WaitUntil(() => h.Scheduler.ScheduleCount == 1 + i);
         }
 
         await WaitForOutcome(service, AutoSendOutcome.NoWindow);
-        Assert.Equal(5, h.Sender.InvokeCount);
+        Assert.Equal(8, h.Sender.InvokeCount);
         Assert.Equal(AutoSendState.Idle, service.Status.State);
         Assert.False(h.Store.Armed);
         Assert.Equal(ResetAt.UtcTicks, h.Store.LastFiredResetAtUtcTicks);
@@ -386,7 +386,7 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
 
         h.Scheduler.Fire();
@@ -408,7 +408,7 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
 
         h.Scheduler.Fire();
@@ -434,7 +434,7 @@ public class AutoSendServiceTests
         h.Snapshot = SessionSnapshot(ResetAt);
 
         service.Arm(AutoSendMode.Always);
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         h.Snapshot = SessionSnapshot(ResetAt.AddHours(5));
 
         h.Scheduler.Fire();
@@ -464,7 +464,7 @@ public class AutoSendServiceTests
 
         // Confirmation fetches keep returning the pre-reset window; stays armed and retries.
         // Advance past the target+grace so retries anchor to the 30s floor (real trigger time).
-        h.Now = ResetAt.AddSeconds(15);
+        h.Now = ResetAt.AddSeconds(80);
         for (int i = 0; i < 5; i++)
         {
             h.Scheduler.Fire();

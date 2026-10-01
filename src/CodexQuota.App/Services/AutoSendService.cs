@@ -80,11 +80,15 @@ internal sealed class TimerAutoSendScheduler : IAutoSendScheduler
 /// </summary>
 public sealed class AutoSendService
 {
-    private static readonly TimeSpan TriggerGrace = TimeSpan.FromSeconds(10);
+    // Codex needs ~1 min after the session reset before its Send button enables; fire the
+    // first trigger attempt after it has typically enabled. A poll that already observed the
+    // reset still confirms promptly via the OnStateChanged path.
+    private static readonly TimeSpan TriggerGrace = TimeSpan.FromSeconds(75);
     private static readonly TimeSpan ConfirmRetryDelay = TimeSpan.FromSeconds(30);
     private const int MaxConfirmAttempts = 10;
     private static readonly TimeSpan SendRetryDelay = TimeSpan.FromMinutes(1);
-    private const int MaxSendAttempts = 5;
+    // Covers ~8 min of stubborn disabled-button on the same 1-min spacing.
+    private const int MaxSendAttempts = 8;
 
     private readonly object _gate = new();
     private readonly ICodexAppSender _sender;

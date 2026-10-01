@@ -15,12 +15,12 @@
   <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1} tokens</value></data>
   <data name="Ui.ResetsOn" xml:space="preserve"><value>se reinicia a las {0}</value></data>
   <data name="Ui.ResetsIn" xml:space="preserve"><value>se reinicia en {0}</value></data>
-  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} reinicios disponibles</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0} reinicios</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>el más antiguo caduca a las {0}</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>el más antiguo caduca en {0}</value></data>
   <data name="Ui.ExpiresOn" xml:space="preserve"><value>caduca a las {0}</value></data>
   <data name="Ui.ExpiresIn" xml:space="preserve"><value>caduca en {0}</value></data>
-  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} reinicio disponible</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0} reinicio</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>Última actualización {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>Última actualización {0} (obsoleta)</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · actualizando…</value></data>

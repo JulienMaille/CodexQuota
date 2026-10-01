@@ -15,12 +15,12 @@
   <data name="Ui.TokenDetail" xml:space="preserve"><value>{0} · {1}トークン</value></data>
   <data name="Ui.ResetsOn" xml:space="preserve"><value>{0}にリセット</value></data>
   <data name="Ui.ResetsIn" xml:space="preserve"><value>{0}後にリセット</value></data>
-  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0}件のリセットが利用可能</value></data>
+  <data name="Ui.ResetCreditsCount" xml:space="preserve"><value>{0}件のリセット</value></data>
   <data name="Ui.OldestExpiresOn" xml:space="preserve"><value>最も古いものは{0}に期限切れ</value></data>
   <data name="Ui.OldestExpiresIn" xml:space="preserve"><value>最も古いものは{0}後に期限切れ</value></data>
   <data name="Ui.ExpiresOn" xml:space="preserve"><value>{0}に期限切れ</value></data>
   <data name="Ui.ExpiresIn" xml:space="preserve"><value>{0}後に期限切れ</value></data>
-  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0}件のリセットが利用可能</value></data>
+  <data name="Ui.ResetCreditCountOne" xml:space="preserve"><value>{0}件のリセット</value></data>
   <data name="Ui.LastUpdatedAt" xml:space="preserve"><value>最終更新 {0}</value></data>
   <data name="Ui.LastUpdatedStale" xml:space="preserve"><value>最終更新 {0}（古いデータ）</value></data>
   <data name="Ui.RefreshingSuffix" xml:space="preserve"><value> · 更新中…</value></data>

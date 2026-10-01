@@ -387,7 +387,13 @@ namespace CodexQuota.Controls
                 }
                 else
                 {
-                    rows.Add(new WidgetUsageRow("Credits", 0, FormatCreditsValue(cost), HasBar: false));
+                    // No-cap credits: single tight embedded label ("0 crédits") in the label cell,
+                    // Value empty, HasBar=false. A separate value cell would sit in the far
+                    // bar+value span while the label column stretches to the group's widest label
+                    // (the Resets line), leaving "Crédits         0".
+                    string lowered = AppStrings.Get("Labels.Credits").ToLowerInvariant();
+                    string embedded = $"{FormatCreditsValue(cost)} {lowered}";
+                    rows.Add(new WidgetUsageRow(embedded, 0, string.Empty, HasBar: false));
                 }
             }
             // Reset credits share the flyout panel's count wording (Ui.ResetCreditCountOne/Count);
@@ -549,6 +555,11 @@ namespace CodexQuota.Controls
             // reset column would pad to the group's widest label and leave a double-wide gap.
             if (row.LeadingCount is not null && ResetDisplayText(row) is { Length: > 0 } reset)
                 label += $" {reset}";
+            // Bar-less rows (Credits "0") render the value inline in the label cell, so the
+            // label measurement must include it: otherwise the label column sizes to "Crédits"
+            // alone and clips the inlined "0". Resets rows carry an empty Value and stay as-is.
+            if (!row.HasBar && !string.IsNullOrEmpty(row.Value))
+                label += $" {row.Value}";
             return label;
         }
 
@@ -656,7 +667,7 @@ namespace CodexQuota.Controls
             TextBlock Value,
             IReadOnlyList<Border> Markers);
 
-        private sealed record WidgetLayoutMetrics(double LabelWidth, double ResetWidth, double ValueWidth);
+        private sealed record WidgetLayoutMetrics(double LabelWidth, double ResetWidth, double BarWidth, double ValueWidth);
 
         /// <summary>
         /// The opacity for the result currently shown. Values restored from disk remain dimmed until a live
@@ -729,7 +740,7 @@ namespace CodexQuota.Controls
             {
                 Panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(layout.LabelWidth) });
                 Panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(layout.ResetWidth) });
-                Panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(BarColumnLogicalWidth) });
+                Panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(layout.BarWidth) });
                 Panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(layout.ValueWidth) });
             }
 
@@ -763,7 +774,7 @@ namespace CodexQuota.Controls
             {
                 var layout = CalculateLayoutMetrics(rows, group);
                 total += layout.LabelWidth + layout.ResetWidth;
-                total += BarColumnLogicalWidth + layout.ValueWidth;
+                total += layout.BarWidth + layout.ValueWidth;
                 columnCount += columnsPerGroup;
             }
 
@@ -783,9 +794,11 @@ namespace CodexQuota.Controls
             int labelFont = isSingleRowGroup ? WidgetFontSize + 1 : WidgetFontSize;
             double widestLabel = 0;
             double widestReset = 0;
+            bool groupHasBar = false;
             for (int i = 0; i < count; i++)
             {
                 var row = rows[start + i];
+                groupHasBar |= row.HasBar;
                 double iconWidth = row.GlyphData != null ? RowLabelGlyphReserve : 0;
                 widestLabel = Math.Max(widestLabel, MeasureTextWidth(BaseLabelText(row), labelFont) + iconWidth);
                 // The Resets row embeds its countdown in the label (single TextBlock), so its
@@ -798,7 +811,25 @@ namespace CodexQuota.Controls
                 }
             }
 
+            // Per-group column collapse: groups with no bar row (Credits + Resets) draw
+            // nothing in the bar/value columns — their values render inline in the label
+            // cell (see CreateLabelText) — so collapse both columns to 0. BaseLabelText
+            // already includes the inlined value, so the label column sizes to it.
+            // Bar/percent groups keep the global behavior.
+            bool showBars = WidgetAppearanceSettings.ShowProgressBar;
+            bool barNeeded = groupHasBar && showBars;
+            double groupBarWidth = barNeeded ? BarColumnLogicalWidth : 0;
+            if (!groupHasBar)
+            {
+                return new WidgetLayoutMetrics(
+                    Math.Max(MinLabelColumnWidth, widestLabel + 3),
+                    widestReset == 0 ? MinResetColumnWidth : widestReset + 2,
+                    groupBarWidth,
+                    0);
+            }
+
             double widestValue = 0;
+            bool needsValueFloor = false;
             for (int i = 0; i < count; i++)
             {
                 var row = rows[start + i];
@@ -808,12 +839,34 @@ namespace CodexQuota.Controls
                 // Reserve room for a large dollar balance so amounts like "$1,000.00" aren't clipped.
                 if (row.Label == "Balance")
                     widestValue = Math.Max(widestValue, MeasureTextWidth("$1,000.00", labelFont));
+                needsValueFloor |= NeedsValueColumnFloor(row);
             }
+
+            // Adaptive value-column floor: groups whose rows all render narrow text-only values
+            // (e.g. the Credits "0" + Resets "" group) size to content instead of keeping the
+            // 34px floor meant for bars/percents. Bar/percent groups keep the global behavior.
+            double valueWidth = widestValue + 4;
+            if (needsValueFloor)
+                valueWidth = Math.Max(ValueColumnWidth, valueWidth);
 
             return new WidgetLayoutMetrics(
                 Math.Max(MinLabelColumnWidth, widestLabel + 3),
                 widestReset == 0 ? MinResetColumnWidth : widestReset + 2,
-                Math.Max(ValueColumnWidth, widestValue + 4));
+                groupBarWidth,
+                valueWidth);
+        }
+
+        /// <summary>
+        /// Whether a row needs the value-column minimum: bar rows (or the "--" unknown markers,
+        /// which carry HasBar) and percent / used-limit values that are measured against it.
+        /// Plain narrow text values ("0", "") do not.
+        /// </summary>
+        private static bool NeedsValueColumnFloor(WidgetUsageRow row)
+        {
+            if (row.HasBar)
+                return true;
+            string value = row.Value?.Trim() ?? string.Empty;
+            return value.Contains('%') || value.Contains('/');
         }
 
         private void AddRow(
@@ -828,14 +881,15 @@ namespace CodexQuota.Controls
             int rowSpan = isSingleRowGroup ? MaxRowsPerGroup : 1;
             int textSize = isSingleRowGroup ? WidgetFontSize + 1 : WidgetFontSize;
             // Bar rows put the value in its own column; text-only rows (and every row when bars are
-            // hidden) let the value span the bar+value columns. Both must land in the same place or the
-            // percents drift out of line with e.g. the Resets count once the bar column collapses.
+            // hidden) let the value span the bar+value columns. All values are right-aligned so they
+            // share the value column's right edge: percents, used/limit values and plain numbers like
+            // the Credits "0" all end flush-right instead of the text-only value starting at the bar
+            // column's left edge.
             bool showBar = usageRow.HasBar && showBars;
-            bool compactTextOnlyValue = !showBar;
             var value = CreateText(
                 usageRow.Value,
                 0.86,
-                compactTextOnlyValue ? TextAlignment.Left : TextAlignment.Center,
+                TextAlignment.Right,
                 textSize);
             var reset = CreateResetText(usageRow, textSize);
 
@@ -896,6 +950,11 @@ namespace CodexQuota.Controls
             }
 
             value.Visibility = showPercentages ? Visibility.Visible : Visibility.Collapsed;
+            // Bar-less rows (Credits, Resets) carry the value inline in the label cell: the
+            // separate value cell collapses so nothing draws out in the bar+value span.
+            // It stays tracked in _renderedRows for theme updates.
+            if (!usageRow.HasBar)
+                value.Visibility = Visibility.Collapsed;
             AddToPanel(label, row, firstColumn, rowSpan);
             AddToPanel(reset, row, firstColumn + 1, rowSpan);
             if (showBar)
@@ -906,9 +965,9 @@ namespace CodexQuota.Controls
             }
             else
             {
-                // Text-only rows span the bar column too, so the value starts at the same x as the bar
-                // column's left edge. When bars are hidden that column is 0-wide, so percents and the
-                // Resets count line up; when bars are shown the value sits where the bar would be.
+                // Text-only rows span the bar column too, right-aligned, so the value ends at the
+                // value column's right edge — flush with the percents above. When bars are hidden that
+                // column is 0-wide and the span is a no-op.
                 barHost.Visibility = Visibility.Collapsed;
                 if (usageRow.HasBar)
                     AddToPanel(barHost, row, firstColumn + 2, rowSpan);
@@ -985,12 +1044,16 @@ namespace CodexQuota.Controls
 
         private static FrameworkElement CreateLabelText(WidgetUsageRow row, int fontSize = WidgetFontSize)
         {
+            // Bar-less rows (Credits "0") render the value inline in the label cell: a separate
+            // value column would sit in the far bar+value span while the label column stretches
+            // to the group's widest label (the Resets line), leaving "Crédits         0".
+            // Two TextBlocks in a tight StackPanel rather than Inlines/Run: Run inlines crash
+            // the native MeasureOverride in this unpackaged build. The gap is a measured single
+            // space: a trailing " " inside the first TextBlock gets trimmed by the text layout.
             // The Resets row renders as a single line ("3 Resets 15d") instead of label + reset
             // column: a separate column would pad to the group's widest label and leave a
-            // double-wide gap between the count and its countdown. Two TextBlocks in a tight
-            // StackPanel rather than Inlines/Run: Run inlines crash the native
-            // MeasureOverride in this unpackaged build. The gap is a measured single space:
-            // a trailing " " inside the first TextBlock gets trimmed by the text layout.
+            // double-wide gap between the count and its countdown.
+            bool inlineValue = !row.HasBar && !string.IsNullOrEmpty(row.Value);
             if (row.LeadingCount is not null && ResetDisplayText(row) is { Length: > 0 } reset)
             {
                 var countPart = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
@@ -998,7 +1061,7 @@ namespace CodexQuota.Controls
                 var resetPart = CreateText(reset, 0.78, TextAlignment.Left, fontSize);
                 resetPart.TextTrimming = TextTrimming.None;
                 resetPart.Foreground = ResetBrushFor(row);
-                return new StackPanel
+                var panel = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = MeasureSpaceWidth(fontSize),
@@ -1006,18 +1069,47 @@ namespace CodexQuota.Controls
                     VerticalAlignment = VerticalAlignment.Center,
                     Children = { countPart, resetPart },
                 };
+                if (inlineValue)
+                {
+                    var valuePart = CreateText(row.Value, 0.86, TextAlignment.Left, fontSize);
+                    valuePart.TextTrimming = TextTrimming.None;
+                    panel.Children.Add(valuePart);
+                }
+                return panel;
             }
 
             if (row.LeadingCount is not null)
             {
                 var countOnly = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
                 countOnly.TextTrimming = TextTrimming.None;
-                return countOnly;
+                if (!inlineValue)
+                    return countOnly;
+                var valueOnlyPart = CreateText(row.Value, 0.86, TextAlignment.Left, fontSize);
+                valueOnlyPart.TextTrimming = TextTrimming.None;
+                return new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = MeasureSpaceWidth(fontSize),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children = { countOnly, valueOnlyPart },
+                };
             }
 
             var baseLabel = CreateText(CountPrefix(row), 0.78, TextAlignment.Left, fontSize);
             baseLabel.TextTrimming = TextTrimming.None;
-            return baseLabel;
+            if (!inlineValue)
+                return baseLabel;
+            var inlineValuePart = CreateText(row.Value, 0.86, TextAlignment.Left, fontSize);
+            inlineValuePart.TextTrimming = TextTrimming.None;
+            return new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = MeasureSpaceWidth(fontSize),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children = { baseLabel, inlineValuePart },
+            };
         }
 
         private static TextBlock CreateResetText(WidgetUsageRow row, int fontSize = WidgetFontSize)
